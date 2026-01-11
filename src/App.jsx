@@ -17,6 +17,10 @@ import ForgotPasswordNewPasswordPage from "./pages/ForgotPasswordNewPasswordPage
 import ForgotPasswordPhonePage from './pages/ForgotPasswordPhonePage';
 import ForgotPasswordEmailPage from './pages/ForgotPasswordEmailPage';
 import ProfilePage from './pages/ProfilePage';
+import AccountSettingsPage from "./pages/settings/AccountSettingsPage";
+import NotificationSettingsPage from "./pages/settings/NotificationSettingsPage";
+import PrivacySettingsPage from "./pages/settings/PrivacySettingsPage";
+import BalancePage from "./pages/BalancePage";
 
 export default function App() {
   return (
@@ -40,6 +44,10 @@ export default function App() {
         <Route path="/forgot-password/phone" element={<ForgotPasswordPhonePage />} />
         <Route path="/forgot-password/email" element={<ForgotPasswordEmailPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/settings/account" element={<AccountSettingsPage />} />
+        <Route path="/settings/notifications" element={<NotificationSettingsPage />} />
+        <Route path="/settings/privacy" element={<PrivacySettingsPage />} />
+        <Route path="/balance" element={<BalancePage />} />
       </Routes>
     </Router>
   );
