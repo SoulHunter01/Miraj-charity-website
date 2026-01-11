@@ -3,6 +3,8 @@ import { User, Mail, Phone, CreditCard } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { apiJson } from "../services/apiAuth";
 
+import Footer from "../components/common/Footer";
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
 function resolveAvatar(avatar) {
@@ -241,6 +243,8 @@ export default function ProfilePage() {
           </main>
         </div>
       </div>
+
+      <Footer />
 
       <Toast
         type={toast.type}
