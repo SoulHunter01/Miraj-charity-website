@@ -6,6 +6,10 @@ from .views import (
     PasswordResetResendView,
     PasswordResetVerifyView,
     PasswordResetCompleteView,
+    SignupView, ProfileView, AvatarUploadView,
+    NotificationPreferenceView, AccountSettingView,
+    ChangePasswordView, DeactivateAccountView, CloseAccountView,
+    BalanceView
 )
 
 urlpatterns = [
@@ -18,4 +22,10 @@ urlpatterns = [
     path("password-reset/resend/", PasswordResetResendView.as_view()),
     path("password-reset/verify/", PasswordResetVerifyView.as_view()),
     path("password-reset/complete/", PasswordResetCompleteView.as_view()),
+    path("settings/notifications/", NotificationPreferenceView.as_view()),
+    path("settings/account/", AccountSettingView.as_view()),
+    path("change-password/", ChangePasswordView.as_view()),
+    path("deactivate/", DeactivateAccountView.as_view()),
+    path("close/", CloseAccountView.as_view()),
+    path("balance/", BalanceView.as_view()),
 ]

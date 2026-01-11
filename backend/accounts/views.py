@@ -6,8 +6,15 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db.models import Sum
 
-from .serializers import SignupSerializer, ProfileSerializer
+from .serializers import SignupSerializer, ProfileSerializer, DonationSerializer
+from .models import NotificationPreference, AccountSetting, Donation
+from .serializers import (
+    NotificationPreferenceSerializer,
+    AccountSettingSerializer,
+    ChangePasswordSerializer,
+)
 
 class SignupView(APIView):
     permission_classes = [AllowAny]
@@ -134,3 +141,109 @@ class PasswordResetCompleteView(APIView):
         cache.delete(_otp_key(reset_id))
         cache.delete(_token_key(reset_id))
         return Response({"message": "Password reset successful."})
+
+class NotificationPreferenceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        pref, _ = NotificationPreference.objects.get_or_create(user=request.user)
+        return Response(NotificationPreferenceSerializer(pref).data)
+
+    def patch(self, request):
+        pref, _ = NotificationPreference.objects.get_or_create(user=request.user)
+        ser = NotificationPreferenceSerializer(pref, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
+
+
+class AccountSettingView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        setting, _ = AccountSetting.objects.get_or_create(user=request.user)
+        return Response(AccountSettingSerializer(setting).data)
+
+    def patch(self, request):
+        setting, _ = AccountSetting.objects.get_or_create(user=request.user)
+        ser = AccountSettingSerializer(setting, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        ser = ChangePasswordSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        if not request.user.check_password(ser.validated_data["current_password"]):
+            return Response({"detail": "Current password is incorrect."}, status=status.HTTP_400_BAD_REQUEST)
+
+        request.user.set_password(ser.validated_data["new_password"])
+        request.user.save()
+        return Response({"detail": "Password updated successfully."})
+
+
+class DeactivateAccountView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        password = request.data.get("password", "")
+        choice = request.data.get("funds_allocation_choice", "")
+
+        if not request.user.check_password(password):
+            return Response({"detail": "Password is incorrect."}, status=status.HTTP_400_BAD_REQUEST)
+
+        setting, _ = AccountSetting.objects.get_or_create(user=request.user)
+        if choice:
+            setting.funds_allocation_choice = choice
+
+        setting.is_deactivated = True
+        setting.save()
+
+        # also disable login
+        request.user.is_active = False
+        request.user.save()
+
+        return Response({"detail": "Account deactivated successfully."})
+
+
+class CloseAccountView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        password = request.data.get("password", "")
+        choice = request.data.get("funds_allocation_choice", "")
+
+        if not request.user.check_password(password):
+            return Response({"detail": "Password is incorrect."}, status=status.HTTP_400_BAD_REQUEST)
+
+        setting, _ = AccountSetting.objects.get_or_create(user=request.user)
+        if choice:
+            setting.funds_allocation_choice = choice
+
+        setting.is_closed = True
+        setting.save()
+
+        request.user.is_active = False
+        request.user.save()
+
+        return Response({"detail": "Account closed successfully."})
+
+class BalanceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        qs = Donation.objects.filter(recipient=request.user).order_by("-created_at")
+
+        total = qs.filter(status=Donation.STATUS_RECEIVED).aggregate(
+            total=Sum("amount")
+        )["total"] or 0
+
+        return Response({
+            "total_balance": str(total),
+            "donations": DonationSerializer(qs[:50], many=True).data
+        })
