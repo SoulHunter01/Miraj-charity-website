@@ -126,6 +126,14 @@ class Donation(models.Model):
         related_name="donations_received",
     )
 
+    donor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="donations_made",
+    )
+
     donor_name = models.CharField(max_length=120, blank=True, default="")
     amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     frequency_label = models.CharField(max_length=50, blank=True, default="")  # e.g. "weekly"
@@ -135,3 +143,34 @@ class Donation(models.Model):
 
     def __str__(self):
         return f"{self.recipient_id} - {self.amount} - {self.status}"
+
+class Fundraiser(models.Model):
+    STATUS_ACTIVE = "active"
+    STATUS_CLOSED = "closed"
+    STATUS_DRAFT = "draft"
+
+    STATUS_CHOICES = [
+        (STATUS_ACTIVE, "Active"),
+        (STATUS_CLOSED, "Closed"),
+        (STATUS_DRAFT, "Draft"),
+    ]
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="fundraisers",
+    )
+
+    title = models.CharField(max_length=200)
+    image = models.ImageField(upload_to="fundraisers/", blank=True, null=True)
+
+    target_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    collected_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    deadline = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title

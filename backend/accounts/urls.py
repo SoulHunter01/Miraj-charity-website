@@ -9,7 +9,7 @@ from .views import (
     SignupView, ProfileView, AvatarUploadView,
     NotificationPreferenceView, AccountSettingView,
     ChangePasswordView, DeactivateAccountView, CloseAccountView,
-    BalanceView
+    BalanceView, DashboardView, MyFundraisersView
 )
 
 urlpatterns = [
@@ -28,4 +28,6 @@ urlpatterns = [
     path("deactivate/", DeactivateAccountView.as_view()),
     path("close/", CloseAccountView.as_view()),
     path("balance/", BalanceView.as_view()),
+    path("dashboard/", DashboardView.as_view()),
+    path("dashboard/my-fundraisers/", MyFundraisersView.as_view()),
 ]

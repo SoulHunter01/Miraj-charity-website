@@ -21,6 +21,8 @@ import AccountSettingsPage from "./pages/settings/AccountSettingsPage";
 import NotificationSettingsPage from "./pages/settings/NotificationSettingsPage";
 import PrivacySettingsPage from "./pages/settings/PrivacySettingsPage";
 import BalancePage from "./pages/BalancePage";
+import DashboardPage from "./pages/DashboardPage";
+import MyFundraisersPage from './pages/dashboard/MyFundraisersPage';
 
 export default function App() {
   return (
@@ -48,6 +50,8 @@ export default function App() {
         <Route path="/settings/notifications" element={<NotificationSettingsPage />} />
         <Route path="/settings/privacy" element={<PrivacySettingsPage />} />
         <Route path="/balance" element={<BalancePage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/dashboard/my-fundraisers" element={<MyFundraisersPage />} />
       </Routes>
     </Router>
   );

@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from .models import PayoutPreference
-from .models import NotificationPreference, AccountSetting, Donation
+from .models import NotificationPreference, AccountSetting, Donation, Fundraiser
 
 User = get_user_model()
 
@@ -141,3 +141,16 @@ class DonationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Donation
         fields = ["id", "donor_name", "amount", "frequency_label", "status", "created_at"]
+
+class FundraiserListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Fundraiser
+        fields = [
+            "id",
+            "title",
+            "image",
+            "target_amount",
+            "collected_amount",
+            "deadline",
+            "status",
+        ]

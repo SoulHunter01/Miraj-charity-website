@@ -1,37 +1,35 @@
 import { Facebook, Instagram, Linkedin, Twitter } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import footerBg from "../../assets/footerbg.png";
+import logo from "../../assets/logo.png";
+
 export default function Footer() {
   return (
     <footer className="relative overflow-hidden">
       {/* Background Image */}
       <img
-        src="src\assets\Footerbg.png" // your footer image
+        src={footerBg}
         alt="Footer background"
-        className="absolute inset-0 w-full h-full object-cover"
+        className="absolute inset-0 h-full w-full object-cover"
       />
 
       {/* Overlay for readability */}
       <div className="absolute inset-0 bg-black/40" />
 
       {/* Content */}
-      <div className="relative z-10 max-w-7xl mx-auto px-6 py-16 text-white">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-12 items-start">
-          
+      <div className="relative z-10 mx-auto max-w-7xl px-6 py-16 text-white">
+        <div className="grid grid-cols-1 gap-12 items-start md:grid-cols-3">
           {/* Logo + Socials */}
           <div>
-            <img
-              src="src\assets\logo.png"
-              alt="Miraj Foundation"
-              className="h-14 mb-6"
-            />
+            <img src={logo} alt="Miraj Foundation" className="h-14 mb-6" />
 
             <h4 className="font-semibold mb-3">Find us on</h4>
             <div className="flex gap-4">
-              <Instagram className="w-5 h-5 cursor-pointer hover:text-green-300" />
-              <Facebook className="w-5 h-5 cursor-pointer hover:text-green-300" />
-              <Twitter className="w-5 h-5 cursor-pointer hover:text-green-300" />
-              <Linkedin className="w-5 h-5 cursor-pointer hover:text-green-300" />
+              <Instagram className="h-5 w-5 cursor-pointer hover:text-green-300" />
+              <Facebook className="h-5 w-5 cursor-pointer hover:text-green-300" />
+              <Twitter className="h-5 w-5 cursor-pointer hover:text-green-300" />
+              <Linkedin className="h-5 w-5 cursor-pointer hover:text-green-300" />
             </div>
           </div>
 
@@ -45,7 +43,6 @@ export default function Footer() {
             <p className="text-sm">miraj@gmail.com</p>
             <p className="text-sm mb-6">+92 123 456 789</p>
 
-            {/* Contact Us Button */}
             <Link to="/contact">
               <button className="px-6 py-3 bg-green-600 hover:bg-green-700 transition-all rounded-lg font-semibold text-white shadow-lg">
                 Contact Us
