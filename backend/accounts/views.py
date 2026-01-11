@@ -7,6 +7,8 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Sum, Count, Q
+from django.db.models import Value, IntegerField
+from django.shortcuts import get_object_or_404
 
 from .serializers import SignupSerializer, ProfileSerializer, DonationSerializer
 from .models import NotificationPreference, AccountSetting, Fundraiser, Donation
@@ -14,7 +16,8 @@ from .serializers import (
     NotificationPreferenceSerializer,
     AccountSettingSerializer,
     ChangePasswordSerializer,
-    FundraiserListSerializer
+    FundraiserListSerializer,
+    FundraiserDetailSerializer, FundraiserDonationSerializer
 )
 
 class SignupView(APIView):
@@ -255,7 +258,7 @@ class DashboardView(APIView):
     def get(self, request):
         # Fundraisers owned by user
         fundraisers = Fundraiser.objects.filter(owner=request.user)
-        fr_total = fundraisers.aggregate(total=Sum("total_received"))["total"] or 0
+        fr_total = fundraisers.aggregate(total=Sum("collected_amount"))["total"] or 0
         fr_active = fundraisers.filter(status=Fundraiser.STATUS_ACTIVE).count()
         fr_closed = fundraisers.filter(status=Fundraiser.STATUS_CLOSED).count()
 
@@ -271,7 +274,7 @@ class DashboardView(APIView):
 
         return Response({
             "my_fundraisers": {
-                "total_received": str(fr_total),
+                "collected_amount": str(fr_total),
                 "active": fr_active,
                 "closed": fr_closed,
             },
@@ -286,10 +289,39 @@ class MyFundraisersView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        status = request.query_params.get("status")  # active | closed | draft
+        status = request.query_params.get("status")
 
-        qs = Fundraiser.objects.filter(owner=request.user).order_by("-created_at")
+        qs = Fundraiser.objects.filter(owner=request.user)
+
         if status:
             qs = qs.filter(status=status)
 
+        qs = Fundraiser.objects.filter(owner=request.user).annotate(donations_count=Value(0, output_field=IntegerField()))
+
         return Response(FundraiserListSerializer(qs, many=True).data)
+
+class FundraiserDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        return Response(FundraiserDetailSerializer(fundraiser).data)
+
+
+class FundraiserDonationsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        qs = Donation.objects.filter(fundraiser=fundraiser).order_by("-created_at")
+        return Response(FundraiserDonationSerializer(qs, many=True).data)
+
+
+class FundraiserCloseView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        fundraiser.status = Fundraiser.STATUS_CLOSED
+        fundraiser.save()
+        return Response({"detail": "Fundraiser closed successfully."}, status=status.HTTP_200_OK)

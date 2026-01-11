@@ -126,6 +126,14 @@ class Donation(models.Model):
         related_name="donations_received",
     )
 
+    fundraiser = models.ForeignKey(
+        "Fundraiser",
+        on_delete=models.CASCADE,
+        related_name="donations",
+        null=True,
+        blank=True,
+    )
+
     donor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

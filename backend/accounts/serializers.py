@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from .models import PayoutPreference
 from .models import NotificationPreference, AccountSetting, Donation, Fundraiser
+from django.db.models import Count
 
 User = get_user_model()
 
@@ -143,6 +144,8 @@ class DonationSerializer(serializers.ModelSerializer):
         fields = ["id", "donor_name", "amount", "frequency_label", "status", "created_at"]
 
 class FundraiserListSerializer(serializers.ModelSerializer):
+    donations_count = serializers.IntegerField(read_only=True)
+    
     class Meta:
         model = Fundraiser
         fields = [
@@ -153,4 +156,25 @@ class FundraiserListSerializer(serializers.ModelSerializer):
             "collected_amount",
             "deadline",
             "status",
+            "donations_count",
         ]
+
+class FundraiserDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Fundraiser
+        fields = [
+            "id",
+            "title",
+            "image",
+            "status",
+            "target_amount",
+            "collected_amount",
+            "deadline",
+            "created_at",
+        ]
+
+
+class FundraiserDonationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Donation
+        fields = ["id", "donor_name", "amount", "frequency_label", "status", "created_at"]

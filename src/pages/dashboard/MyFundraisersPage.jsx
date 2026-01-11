@@ -9,6 +9,29 @@ import { useAuth } from "../../context/AuthContext";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
+function fmtMoney(v) {
+    const n = Number(v || 0);
+    if (Number.isNaN(n)) return "$0";
+    return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  }
+  
+  function fmtDateLong(d) {
+    if (!d) return "—";
+    try {
+      const dt = new Date(d);
+      return dt.toLocaleDateString(undefined, { day: "2-digit", month: "long", year: "numeric" });
+    } catch {
+      return "—";
+    }
+  }
+  
+  function clampPct(collected, target) {
+    const c = Number(collected || 0);
+    const t = Number(target || 0);
+    if (!t) return 0;
+    return Math.max(0, Math.min(100, (c / t) * 100));
+  }
+
 function resolveAvatar(avatar) {
   if (!avatar) return "";
   if (avatar.startsWith("http")) return avatar;
@@ -208,49 +231,69 @@ export default function MyFundraisersPage() {
                       return (
                         <div
                           key={f.id}
-                          className="flex items-center gap-4 rounded-xl border border-emerald-200 bg-white p-4 shadow-sm"
+                          className="flex items-stretch overflow-hidden rounded-2xl border border-emerald-300 bg-white shadow-sm"
                         >
-                          {/* image */}
-                          <div className="h-20 w-28 overflow-hidden rounded-lg bg-slate-200">
+                          {/* LEFT IMAGE */}
+                          <div className="w-[170px] min-w-[170px] bg-slate-200">
                             {f.image ? (
                               <img
                                 src={imgUrl(f.image)}
                                 alt={f.title}
                                 className="h-full w-full object-cover"
                               />
-                            ) : null}
+                            ) : (
+                              <div className="h-full w-full" />
+                            )}
                           </div>
-
-                          {/* title + meta */}
-                          <div className="flex-1">
-                            <p className="text-sm font-semibold text-slate-800">
-                              {f.title}
-                            </p>
-                            <p className="mt-1 text-xs text-emerald-700">
+                      
+                          {/* MIDDLE */}
+                          <div className="flex flex-1 flex-col px-5 py-4">
+                            <p className="text-base font-semibold text-slate-900">{f.title}</p>
+                            <p className="text-xs font-semibold text-emerald-600">
                               ID #{f.id}
                             </p>
-                            <p className="mt-2 text-xs text-slate-500">
-                              Deadline: {formatDate(f.deadline)}
-                            </p>
-                          </div>
-
-                          {/* right info */}
-                          <div className="text-right">
-                            <p className="text-xs text-slate-500">
-                              <span className="font-semibold text-emerald-700">
-                                {formatMoney(collected)}
-                              </span>{" "}
-                              of {formatMoney(target)} collected
-                            </p>
-
-                            <div className="mt-2 flex justify-end gap-1">
-                              <span className="h-3 w-3 rounded-full bg-emerald-600" />
-                              <span className="h-3 w-3 rounded-full bg-emerald-400" />
-                              <span className="h-3 w-3 rounded-full bg-emerald-200" />
+                      
+                            <div className="mt-auto pt-3 text-xs text-slate-600">
+                              <span className="font-medium">Deadline:</span>{" "}
+                              {fmtDateLong(f.deadline)}
                             </div>
-
-                            <button className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:underline">
-                              <Pencil className="h-4 w-4" /> Edit
+                          </div>
+                      
+                          {/* RIGHT */}
+                          <div className="flex w-[260px] min-w-[260px] flex-col items-end px-5 py-4">
+                            {/* amount */}
+                            <p className="text-xs text-slate-600">
+                              <span className="font-bold text-emerald-700">{fmtMoney(f.collected_amount)}</span>{" "}
+                              of {fmtMoney(f.target_amount)} collected
+                            </p>
+                      
+                            {/* progress bar */}
+                            <div className="mt-2 h-[6px] w-[170px] overflow-hidden rounded-full bg-slate-200">
+                              <div
+                                className="h-full rounded-full bg-orange-400"
+                                style={{ width: `${clampPct(f.collected_amount, f.target_amount)}%` }}
+                              />
+                            </div>
+                      
+                            {/* “dots” + dones */}
+                            <div className="mt-2 flex items-center gap-2">
+                              <div className="flex gap-1">
+                                <span className="h-3 w-3 rounded-full bg-slate-300" />
+                                <span className="h-3 w-3 rounded-full bg-slate-400" />
+                                <span className="h-3 w-3 rounded-full bg-slate-500" />
+                              </div>
+                              <span className="text-xs font-semibold text-orange-500">
+                                {f.donations_count ?? 0} dones
+                              </span>
+                            </div>
+                      
+                            {/* edit */}
+                            <button
+                              className="mt-auto inline-flex items-center gap-2 text-sm font-semibold text-emerald-700 hover:underline"
+                              onClick={() => navigate(`/dashboard/my-fundraisers/${f.id}`)} // or edit route later
+                            >
+                              <Pencil className="h-4 w-4" />
+                              Edit
                             </button>
                           </div>
                         </div>
