@@ -10,27 +10,31 @@ import { useAuth } from "../../context/AuthContext";
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
 function fmtMoney(v) {
-    const n = Number(v || 0);
-    if (Number.isNaN(n)) return "$0";
-    return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  const n = Number(v || 0);
+  if (Number.isNaN(n)) return "$0";
+  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+function fmtDateLong(d) {
+  if (!d) return "—";
+  try {
+    const dt = new Date(d);
+    return dt.toLocaleDateString(undefined, {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+  } catch {
+    return "—";
   }
-  
-  function fmtDateLong(d) {
-    if (!d) return "—";
-    try {
-      const dt = new Date(d);
-      return dt.toLocaleDateString(undefined, { day: "2-digit", month: "long", year: "numeric" });
-    } catch {
-      return "—";
-    }
-  }
-  
-  function clampPct(collected, target) {
-    const c = Number(collected || 0);
-    const t = Number(target || 0);
-    if (!t) return 0;
-    return Math.max(0, Math.min(100, (c / t) * 100));
-  }
+}
+
+function clampPct(collected, target) {
+  const c = Number(collected || 0);
+  const t = Number(target || 0);
+  if (!t) return 0;
+  return Math.max(0, Math.min(100, (c / t) * 100));
+}
 
 function resolveAvatar(avatar) {
   if (!avatar) return "";
@@ -57,7 +61,11 @@ function Sidebar({ user, active, onNavigate, onLogout }) {
       <div className="flex flex-col items-center gap-3 pt-2">
         <div className="h-20 w-20 overflow-hidden rounded-full bg-white ring-2 ring-emerald-300">
           {avatarUrl ? (
-            <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+            <img
+              src={avatarUrl}
+              alt="avatar"
+              className="h-full w-full object-cover"
+            />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-emerald-600">
               <User className="h-8 w-8" />
@@ -100,55 +108,43 @@ function Sidebar({ user, active, onNavigate, onLogout }) {
   );
 }
 
-function formatMoney(v) {
-  const n = Number(v || 0);
-  if (Number.isNaN(n)) return "$0";
-  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-}
-
-function formatDate(d) {
-  if (!d) return "—";
-  try {
-    return new Date(d).toLocaleDateString(undefined, {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return "—";
-  }
-}
-
 export default function MyFundraisersPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
   const [status, setStatus] = useState("active"); // active | closed | draft
   const [keyword, setKeyword] = useState("");
+  const [sort, setSort] = useState("newest");
+  const [sortOpen, setSortOpen] = useState(false);
+
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
+      const params = new URLSearchParams();
+      params.set("status", status);
+      params.set("sort", sort);
+      if (keyword.trim()) params.set("q", keyword.trim());
+
       const res = await apiJson(
-        `/api/auth/dashboard/my-fundraisers/?status=${status}`,
+        `/api/auth/dashboard/my-fundraisers/?${params.toString()}`,
         { auth: true }
       );
+
       setList(Array.isArray(res) ? res : []);
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ refetch when status/sort/keyword changes (debounced)
   useEffect(() => {
-    load();
+    const t = setTimeout(() => load(), 350);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
-
-  const filtered = list.filter((f) =>
-    (f?.title || "").toLowerCase().includes(keyword.toLowerCase())
-  );
+  }, [status, keyword, sort]);
 
   return (
     <div className="min-h-screen bg-[#eaf6ff] flex flex-col">
@@ -196,7 +192,7 @@ export default function MyFundraisersPage() {
                           key={t.key}
                           onClick={() => setStatus(t.key)}
                           className={[
-                            "rounded-full px-8 py-2 text-sm font-semibold transition",
+                            "rounded-full px-10 py-2 text-sm font-semibold transition",
                             isActive
                               ? "bg-emerald-600 text-white"
                               : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
@@ -208,9 +204,46 @@ export default function MyFundraisersPage() {
                     })}
                   </div>
 
-                  <button className="rounded-full border border-emerald-200 bg-white px-5 py-2 text-sm text-slate-700 hover:bg-emerald-50">
-                    Sort by
-                  </button>
+                  {/* Sort dropdown */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setSortOpen((p) => !p)}
+                      className="rounded-full border border-emerald-200 bg-white px-6 py-2 text-sm text-slate-700 hover:bg-emerald-50"
+                    >
+                      Sort by
+                    </button>
+
+                    {sortOpen && (
+                      <div className="absolute right-0 z-20 mt-2 w-60 overflow-hidden rounded-xl border border-emerald-100 bg-white shadow-lg">
+                        {[
+                          { key: "newest", label: "Newest first" },
+                          { key: "oldest", label: "Oldest first" },
+                          { key: "deadline_asc", label: "Deadline (soonest)" },
+                          { key: "deadline_desc", label: "Deadline (latest)" },
+                          { key: "collected_desc", label: "Most collected" },
+                          { key: "collected_asc", label: "Least collected" },
+                          { key: "target_desc", label: "Highest target" },
+                          { key: "target_asc", label: "Lowest target" },
+                        ].map((opt) => (
+                          <button
+                            key={opt.key}
+                            onClick={() => {
+                              setSort(opt.key);
+                              setSortOpen(false);
+                            }}
+                            className={[
+                              "w-full px-4 py-2 text-left text-sm hover:bg-emerald-50",
+                              sort === opt.key
+                                ? "font-semibold text-emerald-700"
+                                : "text-slate-700",
+                            ].join(" ")}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* List */}
@@ -219,86 +252,97 @@ export default function MyFundraisersPage() {
                     <div className="rounded-xl bg-white px-5 py-4 shadow-sm">
                       Loading…
                     </div>
-                  ) : filtered.length === 0 ? (
+                  ) : list.length === 0 ? (
                     <div className="rounded-xl bg-white px-5 py-4 text-sm text-slate-600 shadow-sm">
                       No fundraisers found.
                     </div>
                   ) : (
-                    filtered.map((f) => {
-                      const collected = f?.collected_amount ?? 0;
-                      const target = f?.target_amount ?? 0;
+                    list.map((f) => (
+                      <div
+                        key={f.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate(`/dashboard/my-fundraisers/${f.id}`)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            navigate(`/dashboard/my-fundraisers/${f.id}`);
+                          }
+                        }}
+                        className="flex cursor-pointer items-stretch overflow-hidden rounded-2xl border border-emerald-300 bg-white shadow-sm transition hover:shadow-md"
+                      >
+                        {/* LEFT IMAGE */}
+                        <div className="w-[170px] min-w-[170px] bg-slate-200">
+                          {f.image ? (
+                            <img
+                              src={imgUrl(f.image)}
+                              alt={f.title}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-full w-full" />
+                          )}
+                        </div>
 
-                      return (
-                        <div
-                          key={f.id}
-                          className="flex items-stretch overflow-hidden rounded-2xl border border-emerald-300 bg-white shadow-sm"
-                        >
-                          {/* LEFT IMAGE */}
-                          <div className="w-[170px] min-w-[170px] bg-slate-200">
-                            {f.image ? (
-                              <img
-                                src={imgUrl(f.image)}
-                                alt={f.title}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="h-full w-full" />
-                            )}
-                          </div>
-                      
-                          {/* MIDDLE */}
-                          <div className="flex flex-1 flex-col px-5 py-4">
-                            <p className="text-base font-semibold text-slate-900">{f.title}</p>
-                            <p className="text-xs font-semibold text-emerald-600">
-                              ID #{f.id}
-                            </p>
-                      
-                            <div className="mt-auto pt-3 text-xs text-slate-600">
-                              <span className="font-medium">Deadline:</span>{" "}
-                              {fmtDateLong(f.deadline)}
-                            </div>
-                          </div>
-                      
-                          {/* RIGHT */}
-                          <div className="flex w-[260px] min-w-[260px] flex-col items-end px-5 py-4">
-                            {/* amount */}
-                            <p className="text-xs text-slate-600">
-                              <span className="font-bold text-emerald-700">{fmtMoney(f.collected_amount)}</span>{" "}
-                              of {fmtMoney(f.target_amount)} collected
-                            </p>
-                      
-                            {/* progress bar */}
-                            <div className="mt-2 h-[6px] w-[170px] overflow-hidden rounded-full bg-slate-200">
-                              <div
-                                className="h-full rounded-full bg-orange-400"
-                                style={{ width: `${clampPct(f.collected_amount, f.target_amount)}%` }}
-                              />
-                            </div>
-                      
-                            {/* “dots” + dones */}
-                            <div className="mt-2 flex items-center gap-2">
-                              <div className="flex gap-1">
-                                <span className="h-3 w-3 rounded-full bg-slate-300" />
-                                <span className="h-3 w-3 rounded-full bg-slate-400" />
-                                <span className="h-3 w-3 rounded-full bg-slate-500" />
-                              </div>
-                              <span className="text-xs font-semibold text-orange-500">
-                                {f.donations_count ?? 0} dones
-                              </span>
-                            </div>
-                      
-                            {/* edit */}
-                            <button
-                              className="mt-auto inline-flex items-center gap-2 text-sm font-semibold text-emerald-700 hover:underline"
-                              onClick={() => navigate(`/dashboard/my-fundraisers/${f.id}`)} // or edit route later
-                            >
-                              <Pencil className="h-4 w-4" />
-                              Edit
-                            </button>
+                        {/* MIDDLE */}
+                        <div className="flex flex-1 flex-col px-5 py-4">
+                          <p className="text-base font-semibold text-slate-900">
+                            {f.title}
+                          </p>
+                          <p className="text-xs font-semibold text-emerald-600">
+                            ID #{f.id}
+                          </p>
+
+                          <div className="mt-auto pt-3 text-xs text-slate-600">
+                            <span className="font-medium">Deadline:</span>{" "}
+                            {fmtDateLong(f.deadline)}
                           </div>
                         </div>
-                      );
-                    })
+
+                        {/* RIGHT */}
+                        <div className="flex w-[260px] min-w-[260px] flex-col items-end px-5 py-4">
+                          <p className="text-xs text-slate-600">
+                            <span className="font-bold text-emerald-700">
+                              {fmtMoney(f.collected_amount)}
+                            </span>{" "}
+                            of {fmtMoney(f.target_amount)} collected
+                          </p>
+
+                          <div className="mt-2 h-[6px] w-[170px] overflow-hidden rounded-full bg-slate-200">
+                            <div
+                              className="h-full rounded-full bg-orange-400"
+                              style={{
+                                width: `${clampPct(
+                                  f.collected_amount,
+                                  f.target_amount
+                                )}%`,
+                              }}
+                            />
+                          </div>
+
+                          <div className="mt-2 flex items-center gap-2">
+                            <div className="flex gap-1">
+                              <span className="h-3 w-3 rounded-full bg-slate-300" />
+                              <span className="h-3 w-3 rounded-full bg-slate-400" />
+                              <span className="h-3 w-3 rounded-full bg-slate-500" />
+                            </div>
+                            <span className="text-xs font-semibold text-orange-500">
+                              {f.donations_count ?? 0} dones
+                            </span>
+                          </div>
+
+                          <button
+                            className="mt-auto inline-flex items-center gap-2 text-sm font-semibold text-emerald-700 hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/dashboard/my-fundraisers/${f.id}/edit`);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Edit
+                          </button>
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               </div>

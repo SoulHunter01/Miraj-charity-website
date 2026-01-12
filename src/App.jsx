@@ -24,6 +24,7 @@ import BalancePage from "./pages/BalancePage";
 import DashboardPage from "./pages/DashboardPage";
 import MyFundraisersPage from './pages/dashboard/MyFundraisersPage';
 import FundraiserDetailPage from './pages/dashboard/FundraiserDetailPage';
+import EditFundraiserPage from './pages/dashboard/EditFundraiserPage';
 
 export default function App() {
   return (
@@ -53,7 +54,8 @@ export default function App() {
         <Route path="/balance" element={<BalancePage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/dashboard/my-fundraisers" element={<MyFundraisersPage />} />
-        <Route path="/dashboard/my-fundraisers/:fundraiserId" element={<FundraiserDetailPage />} />
+        <Route path="/dashboard/my-fundraisers/:fundraiserId/" element={<FundraiserDetailPage />} />
+        <Route path="/dashboard/my-fundraisers/:fundraiserId/edit" element={<EditFundraiserPage />} />
       </Routes>
     </Router>
   );

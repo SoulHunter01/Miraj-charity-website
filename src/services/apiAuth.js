@@ -42,7 +42,7 @@ export async function apiJson(path, { method = "GET", body, auth = false } = {})
   return data;
 }
 
-export async function apiForm(path, { method = "POST", formData, auth = true } = {}) {
+export async function apiForm(path, { method = "POST", formData, body, auth = true } = {}) {
   const headers = {};
   if (auth) {
     const token = getAccessToken();
@@ -52,7 +52,7 @@ export async function apiForm(path, { method = "POST", formData, auth = true } =
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
-    body: formData,
+    body: formData ?? body, // ✅ supports both
   });
 
   const data = await res.json().catch(() => ({}));

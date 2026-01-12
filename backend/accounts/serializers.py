@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from .models import PayoutPreference
-from .models import NotificationPreference, AccountSetting, Donation, Fundraiser
+from .models import NotificationPreference, AccountSetting, Donation, Fundraiser, FundraiserDocument, FundraiserPayout
 from django.db.models import Count
 
 User = get_user_model()
@@ -177,4 +177,132 @@ class FundraiserDetailSerializer(serializers.ModelSerializer):
 class FundraiserDonationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Donation
-        fields = ["id", "donor_name", "amount", "frequency_label", "status", "created_at"]
+        fields = [
+            "id",
+            "donor_name",
+            "amount",
+            "frequency_label",
+            "status",
+            "created_at",
+        ]
+
+class FundraiserDocumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FundraiserDocument
+        fields = ["id", "file", "uploaded_at"]
+
+class FundraiserPayoutSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FundraiserPayout
+        fields = [
+            "id",
+            "method",
+            "is_enabled",
+            "bank_account_title",
+            "bank_account_number",
+            "bank_iban",
+            "bank_raast_id",
+            "phone_number",
+        ]
+
+    def validate(self, attrs):
+        # validate only if enabled
+        is_enabled = attrs.get("is_enabled", False)
+        method = attrs.get("method")
+
+        if not is_enabled:
+            return attrs
+
+        if method == FundraiserPayout.METHOD_BANK:
+            if not (attrs.get("bank_account_title") or "").strip():
+                raise serializers.ValidationError({"bank_account_title": "Account Title is required for Bank method."})
+            if not (attrs.get("bank_account_number") or "").strip():
+                raise serializers.ValidationError({"bank_account_number": "Account Number is required for Bank method."})
+        else:
+            if not (attrs.get("phone_number") or "").strip():
+                raise serializers.ValidationError({"phone_number": "Phone number is required for this method."})
+
+        return attrs
+
+
+class FundraiserEditSerializer(serializers.ModelSerializer):
+    documents = FundraiserDocumentSerializer(many=True, read_only=True)
+    payouts = FundraiserPayoutSerializer(many=True, required=False)
+
+    class Meta:
+        model = Fundraiser
+        fields = [
+            "id",
+            "title",
+            "description",
+            "location",
+            "deadline",
+            "target_amount",
+            "image",
+            "payouts",
+
+            # payout
+            "payout_method",
+            "bank_account_title",
+            "bank_account_number",
+            "bank_iban",
+            "bank_raast_id",
+            "wallet_phone_number",
+
+            "documents",
+        ]
+
+    def validate(self, attrs):
+        inst = getattr(self, "instance", None)
+
+        payout_related_keys = {
+            "payout_method",
+            "bank_account_title",
+            "bank_account_number",
+            "bank_iban",
+            "bank_raast_id",
+            "wallet_phone_number",
+        }
+
+        # ✅ only validate payout if request is changing payout fields
+        if not any(k in attrs for k in payout_related_keys):
+            return attrs
+
+        method = attrs.get("payout_method", inst.payout_method if inst else "bank")
+
+        if method == "bank":
+            title = attrs.get("bank_account_title", inst.bank_account_title if inst else "")
+            number = attrs.get("bank_account_number", inst.bank_account_number if inst else "")
+            if not title.strip():
+                raise serializers.ValidationError({"bank_account_title": "Account Title is required for Bank Account."})
+            if not number.strip():
+                raise serializers.ValidationError({"bank_account_number": "Account Number is required for Bank Account."})
+        else:
+            phone = attrs.get("wallet_phone_number", inst.wallet_phone_number if inst else "")
+            if not phone.strip():
+                raise serializers.ValidationError({"wallet_phone_number": "Phone Number is required for this payout method."})
+
+        return attrs
+    def update(self, instance, validated_data):
+        payouts_data = validated_data.pop("payouts", None)
+
+        instance = super().update(instance, validated_data)
+
+        if payouts_data is not None:
+            # Upsert each payout row by method
+            for p in payouts_data:
+                method = p.get("method")
+                if not method:
+                    continue
+
+                obj, _ = FundraiserPayout.objects.get_or_create(
+                    fundraiser=instance,
+                    method=method
+                )
+
+                # update fields
+                for k, v in p.items():
+                    setattr(obj, k, v)
+                obj.save()
+
+        return instance

@@ -11,13 +11,14 @@ from django.db.models import Value, IntegerField
 from django.shortcuts import get_object_or_404
 
 from .serializers import SignupSerializer, ProfileSerializer, DonationSerializer
-from .models import NotificationPreference, AccountSetting, Fundraiser, Donation
+from .models import NotificationPreference, AccountSetting, Fundraiser, Donation, FundraiserDocument
 from .serializers import (
     NotificationPreferenceSerializer,
     AccountSettingSerializer,
     ChangePasswordSerializer,
     FundraiserListSerializer,
-    FundraiserDetailSerializer, FundraiserDonationSerializer
+    FundraiserDetailSerializer, FundraiserDonationSerializer,
+    FundraiserEditSerializer, FundraiserDocumentSerializer
 )
 
 class SignupView(APIView):
@@ -289,14 +290,33 @@ class MyFundraisersView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        status = request.query_params.get("status")
+        status_param = (request.query_params.get("status") or "").strip().lower()
+        q = (request.query_params.get("q") or "").strip()
+        sort = (request.query_params.get("sort") or "newest").strip().lower()
 
         qs = Fundraiser.objects.filter(owner=request.user)
 
-        if status:
-            qs = qs.filter(status=status)
+        # ✅ Status filter (ensure correct values)
+        # Your model uses: active, closed, draft
+        if status_param in ["active", "closed", "draft"]:
+            qs = qs.filter(status=status_param)
 
-        qs = Fundraiser.objects.filter(owner=request.user).annotate(donations_count=Value(0, output_field=IntegerField()))
+        # ✅ Search filter (title OR id)
+        if q:
+            qs = qs.filter(Q(title__icontains=q) | Q(id__icontains=q))
+
+        # ✅ Sort options
+        sort_map = {
+            "newest": "-created_at",
+            "oldest": "created_at",
+            "deadline_asc": "deadline",
+            "deadline_desc": "-deadline",
+            "collected_desc": "-collected_amount",
+            "collected_asc": "collected_amount",
+            "target_desc": "-target_amount",
+            "target_asc": "target_amount",
+        }
+        qs = qs.order_by(sort_map.get(sort, "-created_at"))
 
         return Response(FundraiserListSerializer(qs, many=True).data)
 
@@ -325,3 +345,54 @@ class FundraiserCloseView(APIView):
         fundraiser.status = Fundraiser.STATUS_CLOSED
         fundraiser.save()
         return Response({"detail": "Fundraiser closed successfully."}, status=status.HTTP_200_OK)
+
+class FundraiserEditView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        return Response(FundraiserEditSerializer(fundraiser).data)
+
+    def patch(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        ser = FundraiserEditSerializer(fundraiser, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(FundraiserEditSerializer(fundraiser).data)
+
+
+class FundraiserCoverUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        file = request.FILES.get("image")
+        if not file:
+            return Response({"detail": "image is required"}, status=400)
+
+        fundraiser.image = file
+        fundraiser.save()
+        return Response(FundraiserEditSerializer(fundraiser).data)
+
+
+class FundraiserDocumentUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        file = request.FILES.get("file")
+        if not file:
+            return Response({"detail": "file is required"}, status=400)
+
+        doc = FundraiserDocument.objects.create(fundraiser=fundraiser, file=file)
+        return Response(FundraiserDocumentSerializer(doc).data, status=status.HTTP_201_CREATED)
+
+
+class FundraiserDocumentDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, fundraiser_id, doc_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        doc = get_object_or_404(FundraiserDocument, id=doc_id, fundraiser=fundraiser)
+        doc.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

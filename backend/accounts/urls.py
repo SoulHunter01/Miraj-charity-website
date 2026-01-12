@@ -10,7 +10,11 @@ from .views import (
     NotificationPreferenceView, AccountSettingView,
     ChangePasswordView, DeactivateAccountView, CloseAccountView,
     BalanceView, DashboardView, MyFundraisersView,
-    FundraiserDetailView, FundraiserDonationsView, FundraiserCloseView
+    FundraiserDetailView, FundraiserDonationsView, FundraiserCloseView,
+    FundraiserEditView,
+    FundraiserCoverUploadView,
+    FundraiserDocumentUploadView,
+    FundraiserDocumentDeleteView,
 )
 
 urlpatterns = [
@@ -34,4 +38,8 @@ urlpatterns = [
     path("fundraisers/<int:fundraiser_id>/", FundraiserDetailView.as_view()),
     path("fundraisers/<int:fundraiser_id>/donations/", FundraiserDonationsView.as_view()),
     path("fundraisers/<int:fundraiser_id>/close/", FundraiserCloseView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/edit/", FundraiserEditView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/edit/cover/", FundraiserCoverUploadView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/edit/documents/", FundraiserDocumentUploadView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/edit/documents/<int:doc_id>/", FundraiserDocumentDeleteView.as_view()),
 ]

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Pencil, User } from "lucide-react";
+import { ArrowLeft, Pencil, User } from "lucide-react";
 
 import Navbar from "../../components/common/Navbar";
 import Footer from "../../components/common/Footer";
@@ -25,7 +25,11 @@ function fmtDate(iso) {
   if (!iso) return "—";
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+    return d.toLocaleDateString(undefined, {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
   } catch {
     return "—";
   }
@@ -37,23 +41,34 @@ function Sidebar({ user, active, onNavigate, onLogout }) {
       <div className="flex flex-col items-center gap-3 pt-2">
         <div className="h-20 w-20 overflow-hidden rounded-full bg-white ring-2 ring-emerald-300">
           {user?.avatar ? (
-            <img src={imgUrl(user.avatar)} alt="avatar" className="h-full w-full object-cover" />
+            <img
+              src={imgUrl(user.avatar)}
+              alt="avatar"
+              className="h-full w-full object-cover"
+            />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-emerald-600">
               <User className="h-8 w-8" />
             </div>
           )}
         </div>
-        <p className="text-sm font-semibold text-slate-800">{user?.username || "User"}</p>
+        <p className="text-sm font-semibold text-slate-800">
+          {user?.username || "User"}
+        </p>
       </div>
 
       <div className="mt-6 flex flex-col gap-2">
-        {["Account", "My donations", "My fundraisers", "Settings"].map((label) => {
-          const isActive = label === active;
+        {[
+          { label: "Account", key: "account" },
+          { label: "My donations", key: "my_donations" },
+          { label: "My fundraisers", key: "my_fundraisers" },
+          { label: "Settings", key: "settings" },
+        ].map((item) => {
+          const isActive = active === item.key;
           return (
             <button
-              key={label}
-              onClick={() => onNavigate(label)}
+              key={item.key}
+              onClick={() => onNavigate(item.key)}
               className={[
                 "w-full rounded-full px-4 py-2 text-left text-sm transition",
                 isActive
@@ -61,7 +76,7 @@ function Sidebar({ user, active, onNavigate, onLogout }) {
                   : "bg-white text-slate-700 hover:bg-emerald-50",
               ].join(" ")}
             >
-              {label}
+              {item.label}
             </button>
           );
         })}
@@ -92,6 +107,7 @@ export default function FundraiserDetailPage() {
     try {
       const fr = await apiJson(`/api/auth/fundraisers/${fundraiserId}/`, { auth: true });
       const dn = await apiJson(`/api/auth/fundraisers/${fundraiserId}/donations/`, { auth: true });
+
       setFundraiser(fr);
       setDonations(Array.isArray(dn) ? dn : []);
     } finally {
@@ -107,7 +123,10 @@ export default function FundraiserDetailPage() {
   const onCloseFundraiser = async () => {
     try {
       setClosing(true);
-      await apiJson(`/api/auth/fundraisers/${fundraiserId}/close/`, { method: "POST", auth: true });
+      await apiJson(`/api/auth/fundraisers/${fundraiserId}/close/`, {
+        method: "POST",
+        auth: true,
+      });
       await load();
     } finally {
       setClosing(false);
@@ -123,34 +142,51 @@ export default function FundraiserDetailPage() {
           <div className="flex gap-6">
             <Sidebar
               user={user}
-              active="My fundraisers"
-              onNavigate={(label) => {
-                if (label === "Account") navigate("/profile");
-                if (label === "My fundraisers") navigate("/dashboard/my-fundraisers");
-                if (label === "My donations") navigate("/dashboard/my-donations"); // later
-                if (label === "Settings") navigate("/settings/account");
+              active="my_fundraisers"
+              onNavigate={(key) => {
+                if (key === "account") navigate("/profile");
+                if (key === "my_fundraisers") navigate("/dashboard/my-fundraisers");
+                if (key === "my_donations") navigate("/dashboard/my-donations"); // later
+                if (key === "settings") navigate("/settings/account");
               }}
               onLogout={logout}
             />
 
             <main className="flex-1">
               <div className="rounded-2xl bg-white/70 p-8 shadow-lg">
+                {/* ✅ BACK BUTTON */}
+                <button
+                  onClick={() => navigate("/dashboard/my-fundraisers")}
+                  className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-emerald-700 hover:underline"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to My Fundraisers
+                </button>
+
                 {loading || !fundraiser ? (
                   <div className="rounded-xl bg-white px-5 py-4 shadow-sm">Loading…</div>
                 ) : (
                   <>
-                    {/* Top fund info */}
+                    {/* Header section */}
                     <div className="flex items-start justify-between gap-6">
                       <div className="flex gap-4">
                         <div className="h-28 w-36 overflow-hidden rounded-xl bg-slate-200">
                           {fundraiser.image ? (
-                            <img src={imgUrl(fundraiser.image)} alt="" className="h-full w-full object-cover" />
+                            <img
+                              src={imgUrl(fundraiser.image)}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
                           ) : null}
                         </div>
 
                         <div>
-                          <p className="text-lg font-bold text-emerald-700">{fundraiser.title}</p>
-                          <p className="text-xs text-emerald-600">ID #{fundraiser.id}</p>
+                          <p className="text-lg font-bold text-emerald-700">
+                            {fundraiser.title}
+                          </p>
+                          <p className="text-xs text-emerald-600">
+                            ID #{fundraiser.id}
+                          </p>
 
                           <p className="mt-2 text-xs text-slate-600">
                             <span className="font-semibold">Published:</span>{" "}
@@ -161,24 +197,32 @@ export default function FundraiserDetailPage() {
                             {fundraiser.deadline ? fmtDate(fundraiser.deadline) : "—"}
                           </p>
 
-                          <p className="mt-2 text-xs text-orange-600 font-semibold">
-                            {fmtMoney(fundraiser.collected_amount)} of {fmtMoney(fundraiser.target_amount)} collected
+                          <p className="mt-2 text-xs font-semibold text-orange-600">
+                            {fmtMoney(fundraiser.collected_amount)} of{" "}
+                            {fmtMoney(fundraiser.target_amount)} collected
                           </p>
                         </div>
                       </div>
 
-                      {/* Right buttons */}
+                      {/* actions */}
                       <div className="flex flex-col items-end gap-3">
                         <button
                           onClick={onCloseFundraiser}
                           disabled={closing || fundraiser.status === "closed"}
                           className="rounded-full bg-sky-400 px-5 py-2 text-xs font-semibold text-white hover:bg-sky-500 disabled:opacity-60"
                         >
-                          {fundraiser.status === "closed" ? "Closed" : closing ? "Closing..." : "Close Fundraiser"}
+                          {fundraiser.status === "closed"
+                            ? "Closed"
+                            : closing
+                            ? "Closing..."
+                            : "Close Fundraiser"}
                         </button>
 
-                        <button className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-700 hover:underline">
-                          <Pencil className="h-4 w-4" /> Edit
+                        <button className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-700 hover:underline"
+                                onClick={() => navigate(`/dashboard/my-fundraisers/${fundraiserId}/edit`)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                          Edit
                         </button>
                       </div>
                     </div>
@@ -203,7 +247,9 @@ export default function FundraiserDetailPage() {
                               <p className="text-sm font-semibold text-slate-800">
                                 {d.donor_name || "Anonymous"}
                               </p>
-                              <p className="text-xs text-slate-500">{fmtDate(d.created_at)}</p>
+                              <p className="text-xs text-slate-500">
+                                {fmtDate(d.created_at)}
+                              </p>
                             </div>
 
                             <div className="text-right">
@@ -211,7 +257,8 @@ export default function FundraiserDetailPage() {
                                 {fmtMoney(d.amount)}
                               </p>
                               <p className="text-[11px] text-slate-500">
-                                {(d.frequency_label || "one-time")} • {d.status || "received"}
+                                {(d.frequency_label || "one-time")} •{" "}
+                                {d.status || "received"}
                               </p>
                             </div>
                           </div>
