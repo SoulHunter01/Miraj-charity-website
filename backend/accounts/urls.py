@@ -15,6 +15,7 @@ from .views import (
     FundraiserCoverUploadView,
     FundraiserDocumentUploadView,
     FundraiserDocumentDeleteView,
+    MyDonationsView
 )
 
 urlpatterns = [
@@ -42,4 +43,5 @@ urlpatterns = [
     path("fundraisers/<int:fundraiser_id>/edit/cover/", FundraiserCoverUploadView.as_view()),
     path("fundraisers/<int:fundraiser_id>/edit/documents/", FundraiserDocumentUploadView.as_view()),
     path("fundraisers/<int:fundraiser_id>/edit/documents/<int:doc_id>/", FundraiserDocumentDeleteView.as_view()),
+    path("dashboard/my-donations/", MyDonationsView.as_view()),
 ]

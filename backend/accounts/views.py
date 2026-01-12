@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.db.models import Sum, Count, Q
+from django.db.models import Sum, Count, Q, Max
 from django.db.models import Value, IntegerField
 from django.shortcuts import get_object_or_404
 
@@ -396,3 +396,69 @@ class FundraiserDocumentDeleteView(APIView):
         doc = get_object_or_404(FundraiserDocument, id=doc_id, fundraiser=fundraiser)
         doc.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+class MyDonationsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        q = (request.query_params.get("q") or "").strip()
+        sort = (request.query_params.get("sort") or "latest").strip().lower()
+
+        # only donations made by this user, linked to a fundraiser
+        qs = Donation.objects.filter(donor=request.user, fundraiser__isnull=False)
+
+        # search by fundraiser title
+        if q:
+            qs = qs.filter(fundraiser__title__icontains=q)
+
+        # group by fundraiser so list doesn't repeat same fundraiser multiple times
+        grouped = (
+            qs.values(
+                "fundraiser_id",
+                "fundraiser__title",
+                "fundraiser__image",
+                "fundraiser__owner__username",
+                "fundraiser__target_amount",
+                "fundraiser__collected_amount",
+            )
+            .annotate(
+                total_donated=Sum("amount"),
+                last_donation=Max("created_at"),
+                frequency_label=Max("frequency_label"),
+            )
+        )
+
+        # sorting
+        if sort == "latest":
+            grouped = grouped.order_by("-last_donation")
+        elif sort == "most":
+            grouped = grouped.order_by("-total_donated")
+        elif sort == "least":
+            grouped = grouped.order_by("total_donated")
+        else:
+            grouped = grouped.order_by("-last_donation")
+
+        # compute "left" = goal - collected (for display)
+        out = []
+        for row in grouped:
+            try:
+                target = row["fundraiser__target_amount"] or 0
+                collected = row["fundraiser__collected_amount"] or 0
+                left = target - collected
+                if left < 0:
+                    left = 0
+            except Exception:
+                left = 0
+
+            out.append({
+                "fundraiser_id": row["fundraiser_id"],
+                "title": row["fundraiser__title"],
+                "image": row["fundraiser__image"],
+                "published_by": row["fundraiser__owner__username"] or "",
+                "total_donated": str(row["total_donated"] or 0),
+                "frequency_label": row["frequency_label"] or "",
+                "left": str(left),
+                "last_donation": row["last_donation"],
+            })
+
+        return Response(out)

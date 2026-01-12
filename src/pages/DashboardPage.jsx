@@ -169,9 +169,7 @@ export default function DashboardPage() {
                     totalValue={loading ? "0" : data.my_donations.total_donated}
                     active={loading ? "—" : data.my_donations.active}
                     closed={loading ? "—" : data.my_donations.closed}
-                    onClick={() => {
-                      // later: navigate("/my-donations")
-                    }}
+                    onClick={() => navigate("/dashboard/my-donations")}
                   />
                 </div>
               </div>
