@@ -21,6 +21,11 @@ import AccountSettingsPage from "./pages/settings/AccountSettingsPage";
 import NotificationSettingsPage from "./pages/settings/NotificationSettingsPage";
 import PrivacySettingsPage from "./pages/settings/PrivacySettingsPage";
 import BalancePage from "./pages/BalancePage";
+import DashboardPage from "./pages/DashboardPage";
+import MyFundraisersPage from './pages/dashboard/MyFundraisersPage';
+import FundraiserDetailPage from './pages/dashboard/FundraiserDetailPage';
+import EditFundraiserPage from './pages/dashboard/EditFundraiserPage';
+import MyDonationsPage from "./pages/dashboard/MyDonationsPage";
 
 export default function App() {
   return (
@@ -48,6 +53,11 @@ export default function App() {
         <Route path="/settings/notifications" element={<NotificationSettingsPage />} />
         <Route path="/settings/privacy" element={<PrivacySettingsPage />} />
         <Route path="/balance" element={<BalancePage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/dashboard/my-fundraisers" element={<MyFundraisersPage />} />
+        <Route path="/dashboard/my-fundraisers/:fundraiserId/" element={<FundraiserDetailPage />} />
+        <Route path="/dashboard/my-fundraisers/:fundraiserId/edit" element={<EditFundraiserPage />} />
+        <Route path="/dashboard/my-donations" element={<MyDonationsPage />} />
       </Routes>
     </Router>
   );

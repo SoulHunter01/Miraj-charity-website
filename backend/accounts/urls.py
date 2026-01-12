@@ -9,7 +9,13 @@ from .views import (
     SignupView, ProfileView, AvatarUploadView,
     NotificationPreferenceView, AccountSettingView,
     ChangePasswordView, DeactivateAccountView, CloseAccountView,
-    BalanceView
+    BalanceView, DashboardView, MyFundraisersView,
+    FundraiserDetailView, FundraiserDonationsView, FundraiserCloseView,
+    FundraiserEditView,
+    FundraiserCoverUploadView,
+    FundraiserDocumentUploadView,
+    FundraiserDocumentDeleteView,
+    MyDonationsView
 )
 
 urlpatterns = [
@@ -28,4 +34,14 @@ urlpatterns = [
     path("deactivate/", DeactivateAccountView.as_view()),
     path("close/", CloseAccountView.as_view()),
     path("balance/", BalanceView.as_view()),
+    path("dashboard/", DashboardView.as_view()),
+    path("dashboard/my-fundraisers/", MyFundraisersView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/", FundraiserDetailView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/donations/", FundraiserDonationsView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/close/", FundraiserCloseView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/edit/", FundraiserEditView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/edit/cover/", FundraiserCoverUploadView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/edit/documents/", FundraiserDocumentUploadView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/edit/documents/<int:doc_id>/", FundraiserDocumentDeleteView.as_view()),
+    path("dashboard/my-donations/", MyDonationsView.as_view()),
 ]

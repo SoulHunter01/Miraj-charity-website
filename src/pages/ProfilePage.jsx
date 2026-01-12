@@ -263,6 +263,10 @@ export default function ProfilePage() {
                   navigate("/balance");
                   return;
                 }
+                if (label === "Dashboard") {
+                  navigate("/dashboard");
+                  return;
+                }
                 setActiveMenu(label);
               }}
               onLogout={logout}

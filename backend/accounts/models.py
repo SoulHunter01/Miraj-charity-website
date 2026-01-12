@@ -126,6 +126,22 @@ class Donation(models.Model):
         related_name="donations_received",
     )
 
+    fundraiser = models.ForeignKey(
+        "Fundraiser",
+        on_delete=models.CASCADE,
+        related_name="donations",
+        null=True,
+        blank=True,
+    )
+
+    donor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="donations_made",
+    )
+
     donor_name = models.CharField(max_length=120, blank=True, default="")
     amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     frequency_label = models.CharField(max_length=50, blank=True, default="")  # e.g. "weekly"
@@ -135,3 +151,114 @@ class Donation(models.Model):
 
     def __str__(self):
         return f"{self.recipient_id} - {self.amount} - {self.status}"
+
+class Fundraiser(models.Model):
+    STATUS_ACTIVE = "active"
+    STATUS_CLOSED = "closed"
+    STATUS_DRAFT = "draft"
+
+    STATUS_CHOICES = [
+        (STATUS_ACTIVE, "Active"),
+        (STATUS_CLOSED, "Closed"),
+        (STATUS_DRAFT, "Draft"),
+    ]
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="fundraisers",
+    )
+
+    title = models.CharField(max_length=200)
+    image = models.ImageField(upload_to="fundraisers/", blank=True, null=True)
+    description = models.TextField(blank=True, default="")
+    location = models.CharField(max_length=200, blank=True, default="")
+    published_at = models.DateTimeField(null=True, blank=True)
+
+    target_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    collected_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    deadline = models.DateField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    PAYOUT_BANK = "bank"
+    PAYOUT_NAYAPAY = "nayapay"
+    PAYOUT_SADAPAY = "sadapay"
+    PAYOUT_JAZZCASH = "jazzcash"
+    PAYOUT_EASYPAISA = "easypaisa"
+    PAYOUT_RAAST = "raast"
+
+    PAYOUT_CHOICES = [
+        (PAYOUT_BANK, "Bank Account"),
+        (PAYOUT_NAYAPAY, "NayaPay"),
+        (PAYOUT_SADAPAY, "SadaPay"),
+        (PAYOUT_JAZZCASH, "JazzCash"),
+        (PAYOUT_EASYPAISA, "EasyPaisa"),
+        (PAYOUT_RAAST, "Raast"),
+    ]
+
+    payout_method = models.CharField(max_length=20, choices=PAYOUT_CHOICES, default=PAYOUT_BANK)
+
+    # Bank details (required if payout_method=bank)
+    bank_account_title = models.CharField(max_length=120, blank=True, default="")
+    bank_account_number = models.CharField(max_length=60, blank=True, default="")
+    bank_iban = models.CharField(max_length=50, blank=True, default="")
+    bank_raast_id = models.CharField(max_length=80, blank=True, default="")
+
+    # Wallet phone (required if payout_method != bank)
+    wallet_phone_number = models.CharField(max_length=30, blank=True, default="")
+
+    def __str__(self):
+        return self.title
+
+class FundraiserDocument(models.Model):
+    fundraiser = models.ForeignKey(
+        Fundraiser,
+        on_delete=models.CASCADE,
+        related_name="documents",
+    )
+    file = models.FileField(upload_to="fundraiser_docs/")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+class FundraiserPayout(models.Model):
+    METHOD_BANK = "bank"
+    METHOD_NAYAPAY = "nayapay"
+    METHOD_SADAPAY = "sadapay"
+    METHOD_JAZZCASH = "jazzcash"
+    METHOD_EASYPAISA = "easypaisa"
+    METHOD_RAAST = "raast"
+
+    METHOD_CHOICES = [
+        (METHOD_BANK, "Bank Account"),
+        (METHOD_NAYAPAY, "NayaPay"),
+        (METHOD_SADAPAY, "SadaPay"),
+        (METHOD_JAZZCASH, "JazzCash"),
+        (METHOD_EASYPAISA, "EasyPaisa"),
+        (METHOD_RAAST, "Raast"),
+    ]
+
+    fundraiser = models.ForeignKey(
+        Fundraiser,
+        on_delete=models.CASCADE,
+        related_name="payouts",
+    )
+
+    method = models.CharField(max_length=20, choices=METHOD_CHOICES)
+    is_enabled = models.BooleanField(default=False)
+
+    # bank fields
+    bank_account_title = models.CharField(max_length=120, blank=True, default="")
+    bank_account_number = models.CharField(max_length=60, blank=True, default="")
+    bank_iban = models.CharField(max_length=50, blank=True, default="")
+    bank_raast_id = models.CharField(max_length=80, blank=True, default="")
+
+    # wallet field
+    phone_number = models.CharField(max_length=30, blank=True, default="")
+
+    class Meta:
+        unique_together = ("fundraiser", "method")
+
+    def __str__(self):
+        return f"{self.fundraiser_id} - {self.method}"

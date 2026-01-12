@@ -14,7 +14,7 @@ const resolveAvatar = (avatar) => {
   return avatar;
 };
 
-function ProfileSidebar({ user, active, onNavigate, onLogout }) {
+function Sidebar({ user, active, onClick, onLogout }) {
   const avatarUrl = resolveAvatar(user?.avatar);
   const items = useMemo(
     () => ["Account Details", "Dashboard", "Balance", "Settings"],
@@ -42,7 +42,7 @@ function ProfileSidebar({ user, active, onNavigate, onLogout }) {
           return (
             <button
               key={label}
-              onClick={() => onNavigate(label)}
+              onClick={() => onClick(label)}
               className={[
                 "w-full rounded-full px-4 py-2 text-left text-sm transition",
                 isActive
@@ -72,30 +72,56 @@ function fmtAmount(v) {
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
-function fmtDate(iso) {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
-  } catch {
-    return "";
-  }
+function StatPill({ label, value }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl bg-white/70 px-6 py-3">
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="text-sm font-extrabold text-slate-800">{value}</p>
+    </div>
+  );
 }
 
-export default function BalancePage() {
+function SummaryCard({ title, titleColor = "text-emerald-700", bgClass, totalLabel, totalValue, active, closed, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "w-full max-w-[360px] rounded-2xl p-8 text-left shadow-lg transition hover:shadow-xl",
+        bgClass,
+      ].join(" ")}
+    >
+      <p className={`text-xl font-extrabold ${titleColor}`}>{title}</p>
+
+      <div className="mt-3">
+        <p className="text-2xl font-extrabold text-orange-600">{fmtAmount(totalValue)}</p>
+        <p className="text-xs text-slate-500">{totalLabel}</p>
+      </div>
+
+      <div className="mt-6 grid grid-cols-2 gap-3">
+        <StatPill label="Active" value={active} />
+        <StatPill label="Closed" value={closed} />
+      </div>
+    </button>
+  );
+}
+
+export default function DashboardPage() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
 
   const [loading, setLoading] = useState(true);
-  const [total, setTotal] = useState("0");
-  const [donations, setDonations] = useState([]);
+  const [data, setData] = useState({
+    my_fundraisers: { total_received: "0", active: 0, closed: 0 },
+    my_donations: { total_donated: "0", active: 0, closed: 0 },
+  });
 
   useEffect(() => {
     (async () => {
       try {
         setLoading(true);
-        const res = await apiJson("/api/auth/balance/", { auth: true });
-        setTotal(res?.total_balance ?? "0");
-        setDonations(res?.donations ?? []);
+        const res = await apiJson("/api/auth/dashboard/", { auth: true });
+        setData(res);
       } finally {
         setLoading(false);
       }
@@ -109,65 +135,42 @@ export default function BalancePage() {
       <div className="flex-1">
         <div className="mx-auto max-w-[1200px] px-6 py-8">
           <div className="flex gap-6">
-            <ProfileSidebar
+            <Sidebar
               user={user}
-              active="Balance"
-              onNavigate={(label) => {
+              active="Dashboard"
+              onClick={(label) => {
                 if (label === "Account Details") navigate("/profile");
-                if (label === "Settings") navigate("/settings/account");
+                if (label === "Dashboard") navigate("/dashboard");
                 if (label === "Balance") navigate("/balance");
-                if (label === "Dashboard") navigate("/dashboard"); // wire later
+                if (label === "Settings") navigate("/settings/account");
               }}
               onLogout={logout}
             />
 
             <main className="flex-1">
-              <div className="relative overflow-hidden rounded-2xl bg-white/70 p-10 shadow-lg">
-                {/* Total balance card */}
-                <div className="mx-auto mb-6 w-full max-w-[240px] rounded-xl bg-emerald-50 px-6 py-4 text-center shadow-sm">
-                  <p className="text-xs font-semibold text-slate-600">Total balance</p>
-                  <p className="mt-1 text-3xl font-extrabold text-emerald-700">
-                    {fmtAmount(total)}
-                  </p>
-                  <p className="text-[11px] text-slate-500">received</p>
-                </div>
+              <div className="relative overflow-hidden rounded-2xl bg-white/70 p-10 shadow-lg min-h-[520px]">
+                <div className="mx-auto grid max-w-[820px] grid-cols-1 gap-6 md:grid-cols-2">
+                  <SummaryCard
+                    title="My Fundraisers"
+                    titleColor="text-emerald-700"
+                    bgClass="bg-emerald-50/70"
+                    totalLabel="Total Received"
+                    totalValue={loading ? "0" : data.my_fundraisers.total_received}
+                    active={loading ? "—" : data.my_fundraisers.active}
+                    closed={loading ? "—" : data.my_fundraisers.closed}
+                    onClick={() => navigate("/dashboard/my-fundraisers")}
+                  />
 
-                <h2 className="text-center text-2xl font-extrabold text-emerald-700">
-                  Donations received
-                </h2>
-
-                <div className="mt-6 space-y-3">
-                  {loading ? (
-                    <div className="rounded-xl bg-white px-5 py-4 shadow-sm">Loading…</div>
-                  ) : donations.length === 0 ? (
-                    <div className="rounded-xl bg-white px-5 py-4 text-sm text-slate-600 shadow-sm">
-                      No donations yet.
-                    </div>
-                  ) : (
-                    donations.map((d) => (
-                      <div
-                        key={d.id}
-                        className="flex items-center justify-between rounded-xl bg-emerald-50/60 px-5 py-4 shadow-sm"
-                      >
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800">
-                            {d.donor_name || "Anonymous"}
-                          </p>
-                          <p className="text-xs text-slate-500">{fmtDate(d.created_at)}</p>
-                        </div>
-
-                        <div className="text-right">
-                          <p className="text-sm font-extrabold text-emerald-700">
-                            {fmtAmount(d.amount)}
-                          </p>
-                          <p className="text-[11px] text-slate-500">
-                            {(d.frequency_label || "").trim() || "one-time"}{" "}
-                            {d.status || "received"}
-                          </p>
-                        </div>
-                      </div>
-                    ))
-                  )}
+                  <SummaryCard
+                    title="My Donations"
+                    titleColor="text-sky-700"
+                    bgClass="bg-sky-50/70"
+                    totalLabel="Total Received"
+                    totalValue={loading ? "0" : data.my_donations.total_donated}
+                    active={loading ? "—" : data.my_donations.active}
+                    closed={loading ? "—" : data.my_donations.closed}
+                    onClick={() => navigate("/dashboard/my-donations")}
+                  />
                 </div>
               </div>
             </main>
