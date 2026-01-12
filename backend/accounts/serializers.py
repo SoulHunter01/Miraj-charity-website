@@ -144,6 +144,12 @@ class DonationSerializer(serializers.ModelSerializer):
         fields = ["id", "donor_name", "amount", "frequency_label", "status", "created_at"]
 
 class FundraiserListSerializer(serializers.ModelSerializer):
+    collected_amount = serializers.DecimalField(
+        source="collected_amount_real",
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+    )
     donations_count = serializers.IntegerField(read_only=True)
     
     class Meta:
@@ -160,6 +166,13 @@ class FundraiserListSerializer(serializers.ModelSerializer):
         ]
 
 class FundraiserDetailSerializer(serializers.ModelSerializer):
+    collected_amount = serializers.DecimalField(
+        source="collected_amount_real",
+        max_digits=12,
+        decimal_places=2,
+        read_only=True
+    )
+    
     class Meta:
         model = Fundraiser
         fields = [

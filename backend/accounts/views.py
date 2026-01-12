@@ -9,6 +9,8 @@ from rest_framework.views import APIView
 from django.db.models import Sum, Count, Q, Max
 from django.db.models import Value, IntegerField
 from django.shortcuts import get_object_or_404
+from django.db.models.functions import Coalesce
+from decimal import Decimal
 
 from .serializers import SignupSerializer, ProfileSerializer, DonationSerializer
 from .models import NotificationPreference, AccountSetting, Fundraiser, Donation, FundraiserDocument
@@ -294,25 +296,42 @@ class MyFundraisersView(APIView):
         q = (request.query_params.get("q") or "").strip()
         sort = (request.query_params.get("sort") or "newest").strip().lower()
 
-        qs = Fundraiser.objects.filter(owner=request.user)
+        # ✅ annotate real totals from donations
+        qs = (
+                Fundraiser.objects
+                .filter(owner=request.user)
+                .annotate(
+                    collected_amount_real=Coalesce(
+                        Sum(
+                            "donations__amount",
+                            filter=Q(donations__status=Donation.STATUS_RECEIVED)
+                        ),
+                        Decimal("0.00")
+                    ),
+                    donations_count=Coalesce(
+                        Count(
+                            "donations",
+                            filter=Q(donations__status=Donation.STATUS_RECEIVED)
+                        ),
+                        0
+                    )
+                )
+            )
 
-        # ✅ Status filter (ensure correct values)
-        # Your model uses: active, closed, draft
         if status_param in ["active", "closed", "draft"]:
             qs = qs.filter(status=status_param)
 
-        # ✅ Search filter (title OR id)
         if q:
             qs = qs.filter(Q(title__icontains=q) | Q(id__icontains=q))
 
-        # ✅ Sort options
+        # ✅ sort using the annotated field (NOT Fundraiser.collected_amount)
         sort_map = {
             "newest": "-created_at",
             "oldest": "created_at",
             "deadline_asc": "deadline",
             "deadline_desc": "-deadline",
-            "collected_desc": "-collected_amount",
-            "collected_asc": "collected_amount",
+            "collected_desc": "-collected_amount_real",
+            "collected_asc": "collected_amount_real",
             "target_desc": "-target_amount",
             "target_asc": "target_amount",
         }
@@ -324,8 +343,30 @@ class FundraiserDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, fundraiser_id):
-        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
-        return Response(FundraiserDetailSerializer(fundraiser).data)
+        fundraiser = (
+            Fundraiser.objects
+            .filter(id=fundraiser_id, owner=request.user)
+            .annotate(
+                collected_amount_real=Coalesce(
+                    Sum(
+                        "donations__amount",
+                        filter=Q(donations__status=Donation.STATUS_RECEIVED)
+                    ),
+                    Decimal("0.00")
+                )
+            )
+            .first()
+        )
+
+        if not fundraiser:
+            return Response({"detail": "Not found"}, status=404)
+
+        data = FundraiserDetailSerializer(fundraiser).data
+
+        # ✅ override static collected_amount with real one
+        data["collected_amount"] = str(fundraiser.collected_amount_real)
+
+        return Response(data)
 
 
 class FundraiserDonationsView(APIView):
@@ -404,14 +445,12 @@ class MyDonationsView(APIView):
         q = (request.query_params.get("q") or "").strip()
         sort = (request.query_params.get("sort") or "latest").strip().lower()
 
-        # only donations made by this user, linked to a fundraiser
+        # donations made by this user (must be linked to fundraiser)
         qs = Donation.objects.filter(donor=request.user, fundraiser__isnull=False)
 
-        # search by fundraiser title
         if q:
             qs = qs.filter(fundraiser__title__icontains=q)
 
-        # group by fundraiser so list doesn't repeat same fundraiser multiple times
         grouped = (
             qs.values(
                 "fundraiser_id",
@@ -419,16 +458,25 @@ class MyDonationsView(APIView):
                 "fundraiser__image",
                 "fundraiser__owner__username",
                 "fundraiser__target_amount",
-                "fundraiser__collected_amount",
             )
             .annotate(
-                total_donated=Sum("amount"),
+                # total donated by this user to this fundraiser
+                total_donated=Coalesce(Sum("amount"), Decimal("0.00")),
                 last_donation=Max("created_at"),
                 frequency_label=Max("frequency_label"),
+
+                # ✅ real collected by fundraiser from ALL received donations
+                collected_real=Coalesce(
+                    Sum(
+                        "fundraiser__donations__amount",
+                        filter=Q(fundraiser__donations__status=Donation.STATUS_RECEIVED),
+                    ),
+                    Decimal("0.00"),
+                ),
             )
         )
 
-        # sorting
+        # sort
         if sort == "latest":
             grouped = grouped.order_by("-last_donation")
         elif sort == "most":
@@ -438,24 +486,25 @@ class MyDonationsView(APIView):
         else:
             grouped = grouped.order_by("-last_donation")
 
-        # compute "left" = goal - collected (for display)
         out = []
         for row in grouped:
-            try:
-                target = row["fundraiser__target_amount"] or 0
-                collected = row["fundraiser__collected_amount"] or 0
-                left = target - collected
-                if left < 0:
-                    left = 0
-            except Exception:
-                left = 0
+            target = row["fundraiser__target_amount"] or Decimal("0.00")
+            collected = row["collected_real"] or Decimal("0.00")
+            left = target - collected
+            if left < 0:
+                left = Decimal("0.00")
+
+            # ✅ image path in values can be "fundraisers/xxx.png" or "/media/..."
+            img = row["fundraiser__image"] or ""
+            if img and not str(img).startswith("/"):
+                img = f"/media/{img}"
 
             out.append({
                 "fundraiser_id": row["fundraiser_id"],
                 "title": row["fundraiser__title"],
-                "image": row["fundraiser__image"],
+                "image": img,
                 "published_by": row["fundraiser__owner__username"] or "",
-                "total_donated": str(row["total_donated"] or 0),
+                "total_donated": str(row["total_donated"]),
                 "frequency_label": row["frequency_label"] or "",
                 "left": str(left),
                 "last_donation": row["last_donation"],
