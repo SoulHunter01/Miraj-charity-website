@@ -116,7 +116,7 @@ export default function BalancePage() {
                 if (label === "Account Details") navigate("/profile");
                 if (label === "Settings") navigate("/settings/account");
                 if (label === "Balance") navigate("/balance");
-                if (label === "Dashboard") setTimeout(() => {}, 0); // wire later
+                if (label === "Dashboard") navigate("/dashboard"); // wire later
               }}
               onLogout={logout}
             />
