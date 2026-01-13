@@ -6,8 +6,22 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db.models import Sum, Count, Q, Max
+from django.db.models import Value, IntegerField
+from django.shortcuts import get_object_or_404
+from django.db.models.functions import Coalesce
+from decimal import Decimal
 
-from .serializers import SignupSerializer, ProfileSerializer
+from .serializers import SignupSerializer, ProfileSerializer, DonationSerializer
+from .models import NotificationPreference, AccountSetting, Fundraiser, Donation, FundraiserDocument
+from .serializers import (
+    NotificationPreferenceSerializer,
+    AccountSettingSerializer,
+    ChangePasswordSerializer,
+    FundraiserListSerializer,
+    FundraiserDetailSerializer, FundraiserDonationSerializer,
+    FundraiserEditSerializer, FundraiserDocumentSerializer
+)
 
 class SignupView(APIView):
     permission_classes = [AllowAny]
@@ -134,3 +148,366 @@ class PasswordResetCompleteView(APIView):
         cache.delete(_otp_key(reset_id))
         cache.delete(_token_key(reset_id))
         return Response({"message": "Password reset successful."})
+
+class NotificationPreferenceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        pref, _ = NotificationPreference.objects.get_or_create(user=request.user)
+        return Response(NotificationPreferenceSerializer(pref).data)
+
+    def patch(self, request):
+        pref, _ = NotificationPreference.objects.get_or_create(user=request.user)
+        ser = NotificationPreferenceSerializer(pref, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
+
+
+class AccountSettingView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        setting, _ = AccountSetting.objects.get_or_create(user=request.user)
+        return Response(AccountSettingSerializer(setting).data)
+
+    def patch(self, request):
+        setting, _ = AccountSetting.objects.get_or_create(user=request.user)
+        ser = AccountSettingSerializer(setting, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        ser = ChangePasswordSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        if not request.user.check_password(ser.validated_data["current_password"]):
+            return Response({"detail": "Current password is incorrect."}, status=status.HTTP_400_BAD_REQUEST)
+
+        request.user.set_password(ser.validated_data["new_password"])
+        request.user.save()
+        return Response({"detail": "Password updated successfully."})
+
+
+class DeactivateAccountView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        password = request.data.get("password", "")
+        choice = request.data.get("funds_allocation_choice", "")
+
+        if not request.user.check_password(password):
+            return Response({"detail": "Password is incorrect."}, status=status.HTTP_400_BAD_REQUEST)
+
+        setting, _ = AccountSetting.objects.get_or_create(user=request.user)
+        if choice:
+            setting.funds_allocation_choice = choice
+
+        setting.is_deactivated = True
+        setting.save()
+
+        # also disable login
+        request.user.is_active = False
+        request.user.save()
+
+        return Response({"detail": "Account deactivated successfully."})
+
+
+class CloseAccountView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        password = request.data.get("password", "")
+        choice = request.data.get("funds_allocation_choice", "")
+
+        if not request.user.check_password(password):
+            return Response({"detail": "Password is incorrect."}, status=status.HTTP_400_BAD_REQUEST)
+
+        setting, _ = AccountSetting.objects.get_or_create(user=request.user)
+        if choice:
+            setting.funds_allocation_choice = choice
+
+        setting.is_closed = True
+        setting.save()
+
+        request.user.is_active = False
+        request.user.save()
+
+        return Response({"detail": "Account closed successfully."})
+
+class BalanceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        qs = Donation.objects.filter(recipient=request.user).order_by("-created_at")
+
+        total = qs.filter(status=Donation.STATUS_RECEIVED).aggregate(
+            total=Sum("amount")
+        )["total"] or 0
+
+        return Response({
+            "total_balance": str(total),
+            "donations": DonationSerializer(qs[:50], many=True).data
+        })
+
+class DashboardView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Fundraisers owned by user
+        fundraisers = Fundraiser.objects.filter(owner=request.user)
+        fr_total = fundraisers.aggregate(total=Sum("collected_amount"))["total"] or 0
+        fr_active = fundraisers.filter(status=Fundraiser.STATUS_ACTIVE).count()
+        fr_closed = fundraisers.filter(status=Fundraiser.STATUS_CLOSED).count()
+
+        # Donations made by user (donor=request.user)
+        donations_made = Donation.objects.filter(donor=request.user)
+        dn_total = donations_made.aggregate(total=Sum("amount"))["total"] or 0
+
+        # For "Active/Closed" under My Donations, we treat:
+        # active = donations to active fundraisers, closed = donations to closed fundraisers
+        # If you don’t have donation->fundraiser relation yet, we’ll just return 0/0.
+        dn_active = 0
+        dn_closed = 0
+
+        return Response({
+            "my_fundraisers": {
+                "collected_amount": str(fr_total),
+                "active": fr_active,
+                "closed": fr_closed,
+            },
+            "my_donations": {
+                "total_donated": str(dn_total),
+                "active": dn_active,
+                "closed": dn_closed,
+            }
+        })
+
+class MyFundraisersView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        status_param = (request.query_params.get("status") or "").strip().lower()
+        q = (request.query_params.get("q") or "").strip()
+        sort = (request.query_params.get("sort") or "newest").strip().lower()
+
+        # ✅ annotate real totals from donations
+        qs = (
+                Fundraiser.objects
+                .filter(owner=request.user)
+                .annotate(
+                    collected_amount_real=Coalesce(
+                        Sum(
+                            "donations__amount",
+                            filter=Q(donations__status=Donation.STATUS_RECEIVED)
+                        ),
+                        Decimal("0.00")
+                    ),
+                    donations_count=Coalesce(
+                        Count(
+                            "donations",
+                            filter=Q(donations__status=Donation.STATUS_RECEIVED)
+                        ),
+                        0
+                    )
+                )
+            )
+
+        if status_param in ["active", "closed", "draft"]:
+            qs = qs.filter(status=status_param)
+
+        if q:
+            qs = qs.filter(Q(title__icontains=q) | Q(id__icontains=q))
+
+        # ✅ sort using the annotated field (NOT Fundraiser.collected_amount)
+        sort_map = {
+            "newest": "-created_at",
+            "oldest": "created_at",
+            "deadline_asc": "deadline",
+            "deadline_desc": "-deadline",
+            "collected_desc": "-collected_amount_real",
+            "collected_asc": "collected_amount_real",
+            "target_desc": "-target_amount",
+            "target_asc": "target_amount",
+        }
+        qs = qs.order_by(sort_map.get(sort, "-created_at"))
+
+        return Response(FundraiserListSerializer(qs, many=True).data)
+
+class FundraiserDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, fundraiser_id):
+        fundraiser = (
+            Fundraiser.objects
+            .filter(id=fundraiser_id, owner=request.user)
+            .annotate(
+                collected_amount_real=Coalesce(
+                    Sum(
+                        "donations__amount",
+                        filter=Q(donations__status=Donation.STATUS_RECEIVED)
+                    ),
+                    Decimal("0.00")
+                )
+            )
+            .first()
+        )
+
+        if not fundraiser:
+            return Response({"detail": "Not found"}, status=404)
+
+        data = FundraiserDetailSerializer(fundraiser).data
+
+        # ✅ override static collected_amount with real one
+        data["collected_amount"] = str(fundraiser.collected_amount_real)
+
+        return Response(data)
+
+
+class FundraiserDonationsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        qs = Donation.objects.filter(fundraiser=fundraiser).order_by("-created_at")
+        return Response(FundraiserDonationSerializer(qs, many=True).data)
+
+
+class FundraiserCloseView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        fundraiser.status = Fundraiser.STATUS_CLOSED
+        fundraiser.save()
+        return Response({"detail": "Fundraiser closed successfully."}, status=status.HTTP_200_OK)
+
+class FundraiserEditView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        return Response(FundraiserEditSerializer(fundraiser).data)
+
+    def patch(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        ser = FundraiserEditSerializer(fundraiser, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(FundraiserEditSerializer(fundraiser).data)
+
+
+class FundraiserCoverUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        file = request.FILES.get("image")
+        if not file:
+            return Response({"detail": "image is required"}, status=400)
+
+        fundraiser.image = file
+        fundraiser.save()
+        return Response(FundraiserEditSerializer(fundraiser).data)
+
+
+class FundraiserDocumentUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        file = request.FILES.get("file")
+        if not file:
+            return Response({"detail": "file is required"}, status=400)
+
+        doc = FundraiserDocument.objects.create(fundraiser=fundraiser, file=file)
+        return Response(FundraiserDocumentSerializer(doc).data, status=status.HTTP_201_CREATED)
+
+
+class FundraiserDocumentDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, fundraiser_id, doc_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        doc = get_object_or_404(FundraiserDocument, id=doc_id, fundraiser=fundraiser)
+        doc.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class MyDonationsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        q = (request.query_params.get("q") or "").strip()
+        sort = (request.query_params.get("sort") or "latest").strip().lower()
+
+        # donations made by this user (must be linked to fundraiser)
+        qs = Donation.objects.filter(donor=request.user, fundraiser__isnull=False)
+
+        if q:
+            qs = qs.filter(fundraiser__title__icontains=q)
+
+        grouped = (
+            qs.values(
+                "fundraiser_id",
+                "fundraiser__title",
+                "fundraiser__image",
+                "fundraiser__owner__username",
+                "fundraiser__target_amount",
+            )
+            .annotate(
+                # total donated by this user to this fundraiser
+                total_donated=Coalesce(Sum("amount"), Decimal("0.00")),
+                last_donation=Max("created_at"),
+                frequency_label=Max("frequency_label"),
+
+                # ✅ real collected by fundraiser from ALL received donations
+                collected_real=Coalesce(
+                    Sum(
+                        "fundraiser__donations__amount",
+                        filter=Q(fundraiser__donations__status=Donation.STATUS_RECEIVED),
+                    ),
+                    Decimal("0.00"),
+                ),
+            )
+        )
+
+        # sort
+        if sort == "latest":
+            grouped = grouped.order_by("-last_donation")
+        elif sort == "most":
+            grouped = grouped.order_by("-total_donated")
+        elif sort == "least":
+            grouped = grouped.order_by("total_donated")
+        else:
+            grouped = grouped.order_by("-last_donation")
+
+        out = []
+        for row in grouped:
+            target = row["fundraiser__target_amount"] or Decimal("0.00")
+            collected = row["collected_real"] or Decimal("0.00")
+            left = target - collected
+            if left < 0:
+                left = Decimal("0.00")
+
+            # ✅ image path in values can be "fundraisers/xxx.png" or "/media/..."
+            img = row["fundraiser__image"] or ""
+            if img and not str(img).startswith("/"):
+                img = f"/media/{img}"
+
+            out.append({
+                "fundraiser_id": row["fundraiser_id"],
+                "title": row["fundraiser__title"],
+                "image": img,
+                "published_by": row["fundraiser__owner__username"] or "",
+                "total_donated": str(row["total_donated"]),
+                "frequency_label": row["frequency_label"] or "",
+                "left": str(left),
+                "last_donation": row["last_donation"],
+            })
+
+        return Response(out)
