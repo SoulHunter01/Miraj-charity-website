@@ -6,6 +6,16 @@ from .views import (
     PasswordResetResendView,
     PasswordResetVerifyView,
     PasswordResetCompleteView,
+    SignupView, ProfileView, AvatarUploadView,
+    NotificationPreferenceView, AccountSettingView,
+    ChangePasswordView, DeactivateAccountView, CloseAccountView,
+    BalanceView, DashboardView, MyFundraisersView,
+    FundraiserDetailView, FundraiserDonationsView, FundraiserCloseView,
+    FundraiserEditView,
+    FundraiserCoverUploadView,
+    FundraiserDocumentUploadView,
+    FundraiserDocumentDeleteView,
+    MyDonationsView
 )
 
 urlpatterns = [
@@ -18,4 +28,20 @@ urlpatterns = [
     path("password-reset/resend/", PasswordResetResendView.as_view()),
     path("password-reset/verify/", PasswordResetVerifyView.as_view()),
     path("password-reset/complete/", PasswordResetCompleteView.as_view()),
+    path("settings/notifications/", NotificationPreferenceView.as_view()),
+    path("settings/account/", AccountSettingView.as_view()),
+    path("change-password/", ChangePasswordView.as_view()),
+    path("deactivate/", DeactivateAccountView.as_view()),
+    path("close/", CloseAccountView.as_view()),
+    path("balance/", BalanceView.as_view()),
+    path("dashboard/", DashboardView.as_view()),
+    path("dashboard/my-fundraisers/", MyFundraisersView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/", FundraiserDetailView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/donations/", FundraiserDonationsView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/close/", FundraiserCloseView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/edit/", FundraiserEditView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/edit/cover/", FundraiserCoverUploadView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/edit/documents/", FundraiserDocumentUploadView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/edit/documents/<int:doc_id>/", FundraiserDocumentDeleteView.as_view()),
+    path("dashboard/my-donations/", MyDonationsView.as_view()),
 ]
