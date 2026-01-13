@@ -14,7 +14,7 @@ import bankLogo from "../assets/payouts/Bank-Logo.png";
 import nayapayLogo from "../assets/payouts/NayaPay-Logo.png";
 import sadapayLogo from "../assets/payouts/SadaPay-Logo.png";
 import jazzcashLogo from "../assets/payouts/jazzcash-Logo.png";
-import easypaisaLogo from "../assets/payouts/EasyPaisa-Logo.png";
+import easypaisaLogo from "../assets/payouts/Easypaisa-Logo.png";
 import raastLogo from "../assets/payouts/Raast-Logo.png";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
