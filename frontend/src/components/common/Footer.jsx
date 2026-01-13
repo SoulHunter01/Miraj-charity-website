@@ -1,7 +1,7 @@
 import { Facebook, Instagram, Linkedin, Twitter } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import footerBg from "../../assets/footerbg.png";
+import footerBg from "../../assets/Footerbg.png";
 import logo from "../../assets/logo.png";
 
 export default function Footer() {
