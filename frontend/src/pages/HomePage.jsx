@@ -8,13 +8,13 @@ import FeaturedFundraisers from '../components/home/FeaturedFundraisers';
 import TrustSection from '../components/home/TrustSection';
 import ImpactSection from '../components/home/ImpactSection';
 
-export default function HomePage() {
+export default function HomePage({ openAuthModal }) {
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
       
       <main>
-        <Hero />
+        <Hero openAuthModal={openAuthModal} />
         <CategoryCards />
         <StatsSection />
         <ImpactSection />

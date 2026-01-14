@@ -1,15 +1,30 @@
 import Button from "../common/Button";
 import { ArrowRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 
 // ✅ Adjust these paths to where your images actually are
 import yourCause from "../../assets/image 1.png";
-// import medicalImg from "../../assets/image2.png";
-// import emergencyImg from "../../assets/image3.png";
-// import educationImg from "../../assets/image4.png";
-// import animalsImg from "../../assets/image5.png";
-// import businessImg from "../../assets/image6.png";
 
-export default function Hero() {
+export default function Hero({ openAuthModal }) {
+  const navigate = useNavigate();
+  const { isAuthed } = useAuth();
+
+  const onStartFundraiser = () => {
+    if (isAuthed) {
+      navigate("/fundraisers/category");
+      return;
+    }
+
+    // not logged in -> show modal then redirect to signup
+    openAuthModal?.({
+      title: "Sign up required",
+      message: "You need to sign up (or login) before starting a fundraiser.",
+      confirmText: "Go to Sign Up",
+      onConfirm: () => navigate("/signup?next=/fundraisers/category"),
+    });
+  };
+
   const floatingCategories = [
     { label: "Your cause", image: yourCause, position: "top-8 left-[18%]", delay: "0s" },
     { label: "Medical", image: yourCause, position: "top-1/2 left-[8%] -translate-y-1/2", delay: "0.5s" },
@@ -92,6 +107,8 @@ export default function Hero() {
               size="lg"
               variant="primary"
               className="text-base px-10 py-4 bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500 shadow-xl hover:shadow-2xl"
+              onClick={onStartFundraiser}
+              type="button"
             >
               Start a Fundraiser
               <ArrowRight className="w-5 h-5" />
