@@ -11,6 +11,7 @@ from django.db.models import Value, IntegerField
 from django.shortcuts import get_object_or_404
 from django.db.models.functions import Coalesce
 from decimal import Decimal
+from django.core.files.storage import default_storage
 
 from .serializers import SignupSerializer, ProfileSerializer, DonationSerializer
 from .models import NotificationPreference, AccountSetting, Fundraiser, Donation, FundraiserDocument
@@ -496,8 +497,8 @@ class MyDonationsView(APIView):
 
             # ✅ image path in values can be "fundraisers/xxx.png" or "/media/..."
             img = row["fundraiser__image"] or ""
-            if img and not str(img).startswith("/"):
-                img = f"/media/{img}"
+            if img:
+                img = default_storage.url(img)
 
             out.append({
                 "fundraiser_id": row["fundraiser_id"],

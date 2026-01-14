@@ -7,5 +7,5 @@ dj-database-url
 djangorestframework
 djangorestframework-simplejwt
 Pillow
-cloudinary
-django-cloudinary-storage
+django-storages
+boto3

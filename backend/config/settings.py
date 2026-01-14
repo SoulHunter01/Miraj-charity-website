@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 import dj_database_url
-import cloudinary
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -30,10 +29,7 @@ INSTALLED_APPS = [
 
     "corsheaders",
     "rest_framework",
-
-    # Cloudinary storage (for ImageField/FileField)
-    "cloudinary",
-    "cloudinary_storage",
+    "storages",
 
     "accounts",
 ]
@@ -128,23 +124,41 @@ if csrf_trusted:
 # ----------------------------
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-
 
 # ----------------------------
-# Media (Cloudinary)
+# Storage (Cloudflare R2 - private)
 # ----------------------------
-# Cloudinary config from environment variables
-cloudinary.config(
-    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME", ""),
-    api_key=os.environ.get("CLOUDINARY_API_KEY", ""),
-    api_secret=os.environ.get("CLOUDINARY_API_SECRET", ""),
-)
+AWS_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY")
+AWS_STORAGE_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME")
 
-# Store all uploaded media (ImageField/FileField) on Cloudinary
-DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID")
+AWS_S3_ENDPOINT_URL = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
-# Keep these (not used much with Cloudinary, but harmless)
+AWS_S3_REGION_NAME = "auto"
+AWS_S3_SIGNATURE_VERSION = "s3v4"
+
+# Keep objects private
+AWS_DEFAULT_ACL = None
+
+# Signed URLs (important since everything is private)
+AWS_QUERYSTRING_AUTH = True
+AWS_QUERYSTRING_EXPIRE = int(os.environ.get("SIGNED_URL_EXPIRE_SECONDS", "3600"))  # 1 hour
+
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        "OPTIONS": {
+            "bucket_name": AWS_STORAGE_BUCKET_NAME,
+            "endpoint_url": AWS_S3_ENDPOINT_URL,
+        },
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
+# These are no longer "served" by Django in production, but can remain:
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
