@@ -45,7 +45,7 @@ export default function LinkPreviousFundraiser() {
         auth: true,
         body: { linked_fundraiser_id: null },
       });
-      navigate(`/fundraisers/${fundraiserId}/publish`); // next step placeholder
+      navigate(`/fundraisers/${fundraiserId}/payout`); // next step placeholder
     } catch (e) {
       setErrorMsg(e.message || "Failed");
     } finally {
@@ -62,7 +62,7 @@ export default function LinkPreviousFundraiser() {
         auth: true,
         body: { linked_fundraiser_id: selectedId },
       });
-      navigate(`/fundraisers/${fundraiserId}/publish`); // next step placeholder
+      navigate(`/fundraisers/${fundraiserId}/payout`); // next step placeholder
     } catch (e) {
       setErrorMsg(e.message || "Failed");
     } finally {

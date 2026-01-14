@@ -246,6 +246,27 @@ class Fundraiser(models.Model):
     # Wallet phone (required if payout_method != bank)
     wallet_phone_number = models.CharField(max_length=30, blank=True, default="")
 
+    REIMB_3 = "3_days"
+    REIMB_7 = "7_days"
+    REIMB_15 = "15_days"
+    REIMB_30 = "30_days"
+    REIMB_DEADLINE = "on_deadline"
+
+    REIMB_CHOICES = [
+        (REIMB_3, "3 days"),
+        (REIMB_7, "7 days"),
+        (REIMB_15, "15 days"),
+        (REIMB_30, "30 days"),
+        (REIMB_DEADLINE, "On deadline"),
+    ]
+
+    reimbursement_period = models.CharField(
+        max_length=20,
+        choices=REIMB_CHOICES,
+        blank=True,
+        default="",
+    )
+
     def __str__(self):
         return self.title
 

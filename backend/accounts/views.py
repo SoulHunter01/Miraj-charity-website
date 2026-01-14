@@ -12,9 +12,10 @@ from django.shortcuts import get_object_or_404
 from django.db.models.functions import Coalesce
 from decimal import Decimal
 from django.core.files.storage import default_storage
+from django.utils import timezone
 
 from .serializers import SignupSerializer, ProfileSerializer, DonationSerializer
-from .models import NotificationPreference, AccountSetting, Fundraiser, Donation, FundraiserDocument
+from .models import NotificationPreference, AccountSetting, Fundraiser, Donation, FundraiserDocument, FundraiserPayout
 from .serializers import (
     NotificationPreferenceSerializer,
     AccountSettingSerializer,
@@ -23,7 +24,8 @@ from .serializers import (
     FundraiserDetailSerializer, FundraiserDonationSerializer,
     FundraiserEditSerializer, FundraiserDocumentSerializer,
     StartFundraiserSerializer, FundraiserStartDetailsSerializer,
-    FundraiserBasicSerializer, FundraiserLinkOptionSerializer
+    FundraiserBasicSerializer, FundraiserLinkOptionSerializer,
+    FundraiserPayoutSetupSerializer
 )
 
 class SignupView(APIView):
@@ -611,3 +613,99 @@ class FundraiserLinkPreviousView(APIView):
         fundraiser.save(update_fields=["linked_fundraiser"])
 
         return Response({"linked_fundraiser_id": linked.id})
+
+class FundraiserPayoutSetupView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+
+        payouts = FundraiserPayout.objects.filter(fundraiser=fundraiser).order_by("method")
+        payout_methods = []
+        for p in payouts:
+            payload = {
+                "method": p.method,
+                "is_enabled": p.is_enabled,
+                "bank_account_title": p.bank_account_title,
+                "bank_account_number": p.bank_account_number,
+                "bank_iban": p.bank_iban,
+                "bank_raast_id": p.bank_raast_id,
+                "phone_number": p.phone_number,
+            }
+            payout_methods.append(payload)
+
+        return Response({
+            "reimbursement_period": fundraiser.reimbursement_period,
+            "payout_methods": payout_methods
+        })
+
+    def patch(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+
+        ser = FundraiserPayoutSetupSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
+
+        # update reimbursement period
+        if "reimbursement_period" in data:
+            fundraiser.reimbursement_period = data.get("reimbursement_period") or ""
+            fundraiser.save(update_fields=["reimbursement_period"])
+
+        # upsert payout methods
+        for m in data["payout_methods"]:
+            obj, _ = FundraiserPayout.objects.get_or_create(
+                fundraiser=fundraiser,
+                method=m["method"],
+            )
+            obj.is_enabled = m["is_enabled"]
+
+            if m["method"] == "bank":
+                obj.bank_account_title = m.get("bank_account_title", "")
+                obj.bank_account_number = m.get("bank_account_number", "")
+                obj.bank_iban = m.get("bank_iban", "")
+                obj.bank_raast_id = m.get("bank_raast_id", "")
+                obj.phone_number = ""
+            else:
+                obj.phone_number = m.get("phone_number", "")
+                obj.bank_account_title = ""
+                obj.bank_account_number = ""
+                obj.bank_iban = ""
+                obj.bank_raast_id = ""
+
+            obj.save()
+
+        return Response({"detail": "Saved"})
+
+class FundraiserPublishView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+
+        # must have at least one enabled payout method
+        enabled = FundraiserPayout.objects.filter(fundraiser=fundraiser, is_enabled=True).exists()
+        if not enabled:
+            return Response({"detail": "Select at least one payout method."}, status=400)
+
+        # basic minimum validations (extend later)
+        if not fundraiser.title.strip():
+            return Response({"detail": "Title is required."}, status=400)
+        if not fundraiser.location.strip():
+            return Response({"detail": "Location is required."}, status=400)
+        if not fundraiser.category.strip():
+            return Response({"detail": "Category is required."}, status=400)
+        if fundraiser.target_amount <= 0:
+            return Response({"detail": "Target amount must be greater than 0."}, status=400)
+        if not fundraiser.deadline:
+            return Response({"detail": "Deadline is required."}, status=400)
+
+        fundraiser.status = Fundraiser.STATUS_ACTIVE
+        fundraiser.published_at = timezone.now()
+        fundraiser.save(update_fields=["status", "published_at"])
+
+        return Response({
+        "id": fundraiser.id,
+        "title": fundraiser.title,
+        "image": fundraiser.image.url if fundraiser.image else "",
+        "status": fundraiser.status,
+    })

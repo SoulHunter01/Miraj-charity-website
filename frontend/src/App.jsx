@@ -37,6 +37,7 @@ import StartFundraiserDetails from "./pages/fundraiser/StartFundraiserDetails";
 import FundraiserBasic from "./pages/fundraiser/FundraiserBasic";
 import FundraiserDetails from "./pages/fundraiser/FundraiserDetails";
 import LinkPreviousFundraiser from "./pages/fundraiser/LinkPreviousFundraiser";
+import FundraiserPayout from "./pages/fundraiser/FundraiserPayout";
 
 export default function App() {
   const [modal, setModal] = useState({
@@ -104,6 +105,7 @@ export default function App() {
         <Route path="/fundraisers/:fundraiserId/basic" element={<FundraiserBasic />} />
         <Route path="/fundraisers/:fundraiserId/details" element={<FundraiserDetails />} />
         <Route path="/fundraisers/:fundraiserId/link-previous" element={<LinkPreviousFundraiser />} />
+        <Route path="/fundraisers/:fundraiserId/payout" element={<FundraiserPayout />} />
 
         {/* User */}
         <Route path="/profile" element={<ProfilePage />} />

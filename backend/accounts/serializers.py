@@ -432,3 +432,68 @@ class FundraiserLinkOptionSerializer(serializers.ModelSerializer):
             "collected_amount_real",
             "donations_count",
         ]
+
+# ----------------------------
+# Payout Setup (Multi-method)
+# ----------------------------
+
+class FundraiserPayoutMethodInputSerializer(serializers.Serializer):
+    method = serializers.ChoiceField(choices=[
+        FundraiserPayout.METHOD_BANK,
+        FundraiserPayout.METHOD_NAYAPAY,
+        FundraiserPayout.METHOD_SADAPAY,
+        FundraiserPayout.METHOD_JAZZCASH,
+        FundraiserPayout.METHOD_EASYPAISA,
+        FundraiserPayout.METHOD_RAAST,
+    ])
+    is_enabled = serializers.BooleanField()
+
+    # bank fields
+    bank_account_title = serializers.CharField(required=False, allow_blank=True)
+    bank_account_number = serializers.CharField(required=False, allow_blank=True)
+    bank_iban = serializers.CharField(required=False, allow_blank=True)
+    bank_raast_id = serializers.CharField(required=False, allow_blank=True)
+
+    # phone for wallets
+    phone_number = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        method = attrs.get("method")
+        enabled = attrs.get("is_enabled", False)
+
+        # if disabled, skip validation
+        if not enabled:
+            return attrs
+
+        if method == FundraiserPayout.METHOD_BANK:
+            if not (attrs.get("bank_account_title") or "").strip():
+                raise serializers.ValidationError({"bank_account_title": "Account Title is required for Bank method."})
+            if not (attrs.get("bank_account_number") or "").strip():
+                raise serializers.ValidationError({"bank_account_number": "Account Number is required for Bank method."})
+            # IBAN and RAAST optional
+        else:
+            if not (attrs.get("phone_number") or "").strip():
+                raise serializers.ValidationError({"phone_number": "Phone number is required for this method."})
+
+        return attrs
+
+
+class FundraiserPayoutSetupSerializer(serializers.Serializer):
+    """
+    Accepts reimbursement_period + payout_methods[] for saving multiple payout methods at once.
+    """
+    reimbursement_period = serializers.ChoiceField(
+        choices=[c[0] for c in getattr(Fundraiser, "REIMB_CHOICES", [])],
+        required=False,
+        allow_blank=True,
+    )
+
+    payout_methods = FundraiserPayoutMethodInputSerializer(many=True)
+
+    def validate_payout_methods(self, methods):
+        seen = set()
+        for m in methods:
+            if m["method"] in seen:
+                raise serializers.ValidationError("Duplicate method in payout_methods.")
+            seen.add(m["method"])
+        return methods
