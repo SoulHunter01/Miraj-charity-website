@@ -319,3 +319,116 @@ class FundraiserEditSerializer(serializers.ModelSerializer):
                 obj.save()
 
         return instance
+
+class FundraiserStartDetailsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Fundraiser
+        fields = [
+            "id",
+            "fundraiser_purpose",
+
+            "donee_name",
+            "donee_gender",
+            "donee_education_level",
+
+            "institution_name",
+            "institution_type",
+            "institution_registration_number",
+        ]
+
+    def validate(self, attrs):
+        purpose = (attrs.get("fundraiser_purpose") or self.instance.fundraiser_purpose or "").strip()
+
+        if purpose == Fundraiser.PURPOSE_CHILD:
+            if not (attrs.get("donee_name") or self.instance.donee_name).strip():
+                raise serializers.ValidationError({"donee_name": "Name of donee is required."})
+            if not (attrs.get("donee_education_level") or self.instance.donee_education_level).strip():
+                raise serializers.ValidationError({"donee_education_level": "Education level is required."})
+
+        elif purpose in [Fundraiser.PURPOSE_INSTITUTION, Fundraiser.PURPOSE_ORG]:
+            if not (attrs.get("institution_name") or self.instance.institution_name).strip():
+                raise serializers.ValidationError({"institution_name": "Institution/organization name is required."})
+            if not (attrs.get("institution_type") or self.instance.institution_type).strip():
+                raise serializers.ValidationError({"institution_type": "Institution type is required."})
+            if not (attrs.get("institution_registration_number") or self.instance.institution_registration_number).strip():
+                raise serializers.ValidationError({"institution_registration_number": "Registration number is required."})
+
+        else:
+            raise serializers.ValidationError({"fundraiser_purpose": "Please select a valid type of fundraiser."})
+
+        return attrs
+
+class StartFundraiserSerializer(serializers.Serializer):
+    fundraiser_type = serializers.ChoiceField(choices=["individual", "organization"])
+
+    def create(self, validated_data):
+        request = self.context["request"]
+        fundraiser_type = validated_data["fundraiser_type"]
+
+        fundraiser = Fundraiser.objects.create(
+            owner=request.user,
+            status=Fundraiser.STATUS_DRAFT,
+            title="Untitled Fundraiser",
+        )
+
+        # If you have fundraiser_type field in model, store it:
+        if hasattr(fundraiser, "fundraiser_type"):
+            fundraiser.fundraiser_type = fundraiser_type
+            fundraiser.save(update_fields=["fundraiser_type"])
+
+        return fundraiser
+
+class FundraiserBasicSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Fundraiser
+        fields = ["id", "title", "location", "category", "target_amount", "deadline"]
+
+    def validate_title(self, v):
+        v = (v or "").strip()
+        if not v:
+            raise serializers.ValidationError("Title is required.")
+        return v
+
+    def validate_location(self, v):
+        v = (v or "").strip()
+        if not v:
+            raise serializers.ValidationError("Location is required.")
+        return v
+
+    def validate_category(self, v):
+        v = (v or "").strip()
+        if not v:
+            raise serializers.ValidationError("Category is required.")
+        return v
+
+    def validate_target_amount(self, v):
+        if v is None:
+            raise serializers.ValidationError("Target amount is required.")
+        if v <= 0:
+            raise serializers.ValidationError("Target amount must be greater than 0.")
+        return v
+
+    def validate_deadline(self, v):
+        if not v:
+            raise serializers.ValidationError("Deadline is required.")
+        return v
+
+class FundraiserDetailsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Fundraiser
+        fields = ["id", "description"]
+
+class FundraiserLinkOptionSerializer(serializers.ModelSerializer):
+    donations_count = serializers.IntegerField(read_only=True)
+    collected_amount_real = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = Fundraiser
+        fields = [
+            "id",
+            "title",
+            "image",
+            "target_amount",
+            "collected_amount_real",
+            "donations_count",
+        ]

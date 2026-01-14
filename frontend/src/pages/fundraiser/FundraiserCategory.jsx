@@ -1,9 +1,9 @@
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import { apiJson } from "../services/apiAuth";
+import { useAuth } from "../../context/AuthContext";
+import { apiJson } from "../../services/apiAuth";
 
-import individualImg from "../assets/individual.jpg";
-import orgImg from "../assets/organisational.jpg";
+import individualImg from "../../assets/individual.jpg";
+import orgImg from "../../assets/organisational.jpg";
 
 export default function FundraiserCategory() {
   const navigate = useNavigate();
@@ -11,15 +11,22 @@ export default function FundraiserCategory() {
 
   const choose = async (type) => {
     try {
-      const res = await apiJson("/api/fundraisers/start/", {
+      if (!isAuthed) {
+        navigate("/signup?next=/fundraisers/category");
+        return;
+      }
+
+      // ✅ IMPORTANT: matches backend prefix /api/auth/
+      const res = await apiJson("/api/auth/fundraisers/start/", {
         method: "POST",
         auth: true,
         body: { fundraiser_type: type },
       });
-  
-      navigate(`/dashboard/my-fundraisers/${res.id}/edit`);
+
+      navigate(`/fundraisers/${res.id}/start`);
     } catch (err) {
-      console.error(err);
+      console.error("Start fundraiser failed:", err);
+      alert(err?.message || "Failed to start fundraiser");
     }
   };
 
@@ -32,7 +39,6 @@ export default function FundraiserCategory() {
         </p>
 
         <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-10">
-          {/* Individual */}
           <button
             onClick={() => choose("individual")}
             className="group rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm hover:shadow-md transition text-left"
@@ -55,7 +61,6 @@ export default function FundraiserCategory() {
             </div>
           </button>
 
-          {/* Organization */}
           <button
             onClick={() => choose("organization")}
             className="group rounded-2xl border border-emerald-200 bg-white p-6 shadow-sm hover:shadow-md transition text-left"

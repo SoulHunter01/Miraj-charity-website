@@ -21,7 +21,9 @@ from .serializers import (
     ChangePasswordSerializer,
     FundraiserListSerializer,
     FundraiserDetailSerializer, FundraiserDonationSerializer,
-    FundraiserEditSerializer, FundraiserDocumentSerializer
+    FundraiserEditSerializer, FundraiserDocumentSerializer,
+    StartFundraiserSerializer, FundraiserStartDetailsSerializer,
+    FundraiserBasicSerializer, FundraiserLinkOptionSerializer
 )
 
 class SignupView(APIView):
@@ -512,3 +514,100 @@ class MyDonationsView(APIView):
             })
 
         return Response(out)
+
+class FundraiserStartDetailsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        ser = FundraiserStartDetailsSerializer(fundraiser, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
+
+class StartFundraiserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        ser = StartFundraiserSerializer(data=request.data, context={"request": request})
+        ser.is_valid(raise_exception=True)
+        fundraiser = ser.save()
+        return Response({"id": fundraiser.id}, status=status.HTTP_201_CREATED)
+
+class FundraiserBasicView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        ser = FundraiserBasicSerializer(fundraiser, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
+
+class FundraiserDetailsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+        ser = FundraiserDetailsSerializer(fundraiser, data=request.data, partial=True)
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
+
+class MyActiveFundraisersView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        qs = (
+            Fundraiser.objects
+            .filter(owner=request.user, status=Fundraiser.STATUS_ACTIVE)
+            .annotate(
+                collected_amount_real=Coalesce(
+                    Sum(
+                        "donations__amount",
+                        filter=Q(donations__status=Donation.STATUS_RECEIVED)
+                    ),
+                    Decimal("0.00")
+                ),
+                donations_count=Coalesce(
+                    Count(
+                        "donations",
+                        filter=Q(donations__status=Donation.STATUS_RECEIVED)
+                    ),
+                    0
+                )
+            )
+            .order_by("-created_at")
+        )
+
+        return Response(FundraiserLinkOptionSerializer(qs, many=True).data)
+
+class FundraiserLinkPreviousView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(Fundraiser, id=fundraiser_id, owner=request.user)
+
+        linked_id = request.data.get("linked_fundraiser_id", None)
+
+        if linked_id in ["", None]:
+            fundraiser.linked_fundraiser = None
+            fundraiser.save(update_fields=["linked_fundraiser"])
+            return Response({"linked_fundraiser_id": None})
+
+        # ensure the linked fundraiser is ACTIVE and belongs to the same user
+        linked = get_object_or_404(
+            Fundraiser,
+            id=linked_id,
+            owner=request.user,
+            status=Fundraiser.STATUS_ACTIVE
+        )
+
+        # prevent linking to itself
+        if linked.id == fundraiser.id:
+            return Response({"detail": "Cannot link fundraiser to itself."}, status=400)
+
+        fundraiser.linked_fundraiser = linked
+        fundraiser.save(update_fields=["linked_fundraiser"])
+
+        return Response({"linked_fundraiser_id": linked.id})

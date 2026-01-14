@@ -32,8 +32,11 @@ import FundraiserDetailPage from "./pages/dashboard/FundraiserDetailPage";
 import EditFundraiserPage from "./pages/dashboard/EditFundraiserPage";
 import MyDonationsPage from "./pages/dashboard/MyDonationsPage";
 
-// new page
-import FundraiserCategory from "./pages/FundraiserCategory";
+import FundraiserCategory from "./pages/fundraiser/FundraiserCategory";
+import StartFundraiserDetails from "./pages/fundraiser/StartFundraiserDetails";
+import FundraiserBasic from "./pages/fundraiser/FundraiserBasic";
+import FundraiserDetails from "./pages/fundraiser/FundraiserDetails";
+import LinkPreviousFundraiser from "./pages/fundraiser/LinkPreviousFundraiser";
 
 export default function App() {
   const [modal, setModal] = useState({
@@ -97,6 +100,10 @@ export default function App() {
 
         {/* Fundraiser start flow */}
         <Route path="/fundraisers/category" element={<FundraiserCategory />} />
+        <Route path="/fundraisers/:fundraiserId/start" element={<StartFundraiserDetails />} />
+        <Route path="/fundraisers/:fundraiserId/basic" element={<FundraiserBasic />} />
+        <Route path="/fundraisers/:fundraiserId/details" element={<FundraiserDetails />} />
+        <Route path="/fundraisers/:fundraiserId/link-previous" element={<LinkPreviousFundraiser />} />
 
         {/* User */}
         <Route path="/profile" element={<ProfilePage />} />
