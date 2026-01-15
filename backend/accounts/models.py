@@ -174,6 +174,7 @@ class Fundraiser(models.Model):
     description = models.TextField(blank=True, default="")
     location = models.CharField(max_length=200, blank=True, default="")
     published_at = models.DateTimeField(null=True, blank=True)
+    category = models.CharField(max_length=100, blank=True, default="")
 
     target_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     collected_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -181,7 +182,42 @@ class Fundraiser(models.Model):
     deadline = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT)
 
+    PURPOSE_CHILD = "child_student"
+    PURPOSE_INSTITUTION = "institution"
+    PURPOSE_ORG = "organization"
+
+    PURPOSE_CHOICES = [
+        (PURPOSE_CHILD, "Support a child/student"),
+        (PURPOSE_INSTITUTION, "Support an institution"),
+        (PURPOSE_ORG, "Support an organization"),
+    ]
+
+    fundraiser_purpose = models.CharField(
+        max_length=30,
+        choices=PURPOSE_CHOICES,
+        blank=True,
+        default="",
+    )
+
+    # Child/student fields
+    donee_name = models.CharField(max_length=200, blank=True, default="")
+    donee_gender = models.CharField(max_length=20, blank=True, default="")  # optional
+    donee_education_level = models.CharField(max_length=40, blank=True, default="")
+
+    # Institution/organization fields
+    institution_name = models.CharField(max_length=200, blank=True, default="")
+    institution_type = models.CharField(max_length=60, blank=True, default="")
+    institution_registration_number = models.CharField(max_length=100, blank=True, default="")
+
     created_at = models.DateTimeField(auto_now_add=True)
+
+    linked_fundraiser = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="linked_children",
+    )
 
     PAYOUT_BANK = "bank"
     PAYOUT_NAYAPAY = "nayapay"
@@ -209,6 +245,27 @@ class Fundraiser(models.Model):
 
     # Wallet phone (required if payout_method != bank)
     wallet_phone_number = models.CharField(max_length=30, blank=True, default="")
+
+    REIMB_3 = "3_days"
+    REIMB_7 = "7_days"
+    REIMB_15 = "15_days"
+    REIMB_30 = "30_days"
+    REIMB_DEADLINE = "on_deadline"
+
+    REIMB_CHOICES = [
+        (REIMB_3, "3 days"),
+        (REIMB_7, "7 days"),
+        (REIMB_15, "15 days"),
+        (REIMB_30, "30 days"),
+        (REIMB_DEADLINE, "On deadline"),
+    ]
+
+    reimbursement_period = models.CharField(
+        max_length=20,
+        choices=REIMB_CHOICES,
+        blank=True,
+        default="",
+    )
 
     def __str__(self):
         return self.title
