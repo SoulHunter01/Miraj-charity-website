@@ -13,6 +13,7 @@ from django.db.models.functions import Coalesce
 from decimal import Decimal
 from django.core.files.storage import default_storage
 from django.utils import timezone
+from django.db import transaction
 
 from .serializers import SignupSerializer, ProfileSerializer, DonationSerializer
 from .models import NotificationPreference, AccountSetting, Fundraiser, Donation, FundraiserDocument, FundraiserPayout
@@ -26,7 +27,8 @@ from .serializers import (
     StartFundraiserSerializer, FundraiserStartDetailsSerializer,
     FundraiserBasicSerializer, FundraiserLinkOptionSerializer,
     FundraiserPayoutSetupSerializer, FeaturedFundraiserSerializer,
-    DiscoverFundraiserSerializer,
+    DiscoverFundraiserSerializer, PublicFundraiserDetailSerializer,
+    PublicDonationListSerializer,
 )
 
 class SignupView(APIView):
@@ -821,3 +823,133 @@ class FundraiserDiscoverView(APIView):
             "offset": offset,
             "limit": limit,
         })
+
+class FundraiserPublicDetailView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, fundraiser_id):
+        fundraiser = (
+            Fundraiser.objects
+            .filter(id=fundraiser_id, status=Fundraiser.STATUS_ACTIVE)
+            .select_related("owner")
+            .prefetch_related("documents")
+            .annotate(
+                collected_amount_real=Coalesce(
+                    Sum("donations__amount", filter=Q(donations__status=Donation.STATUS_RECEIVED)),
+                    Decimal("0.00")
+                ),
+                donations_count=Coalesce(
+                    Count("donations", filter=Q(donations__status=Donation.STATUS_RECEIVED)),
+                    0
+                )
+            )
+            .first()
+        )
+
+        if not fundraiser:
+            return Response({"detail": "Not found"}, status=404)
+
+        # latest donors (sidebar list)
+        donations_qs = (
+            Donation.objects
+            .filter(fundraiser=fundraiser, status=Donation.STATUS_RECEIVED)
+            .select_related("donor")
+            .order_by("-created_at")[:30]
+        )
+
+        data = PublicFundraiserDetailSerializer(fundraiser).data
+        data["donors"] = PublicDonationListSerializer(donations_qs, many=True).data
+
+        return Response(data)
+
+
+class FundraiserDonateCreateView(APIView):
+    permission_classes = [IsAuthenticated]  # ✅ require login for this step
+
+    def post(self, request, fundraiser_id):
+        fundraiser = get_object_or_404(
+            Fundraiser,
+            id=fundraiser_id,
+            status=Fundraiser.STATUS_ACTIVE
+        )
+
+        amount = request.data.get("amount")
+        tip_amount = request.data.get("tip_amount", 0)
+        frequency_label = (request.data.get("frequency_label") or "").strip()
+
+        payment_method = (request.data.get("payment_method") or "").strip().lower()
+        is_anonymous = bool(request.data.get("is_anonymous", False))
+        message = (request.data.get("message") or "").strip()
+
+        # Validate amount
+        try:
+            amount_dec = Decimal(str(amount))
+            tip_dec = Decimal(str(tip_amount or 0))
+        except Exception:
+            return Response({"detail": "Invalid amount or tip_amount."}, status=400)
+
+        if amount_dec <= 0:
+            return Response({"detail": "Amount must be greater than 0."}, status=400)
+        if tip_dec < 0:
+            return Response({"detail": "Tip must be 0 or greater."}, status=400)
+
+        # Validate payment method (simple allow-list for now)
+        allowed = {"visa", "mastercard", "sadapay", "easypaisa", "nayapay", "raast"}
+        if payment_method not in allowed:
+            return Response({"detail": "Invalid payment_method."}, status=400)
+
+        donor_name = "" if is_anonymous else (request.user.username or "")
+
+        payer_phone = (request.data.get("payer_phone") or "").strip()
+
+        card_holder_name = (request.data.get("card_holder_name") or "").strip()
+        card_number = (request.data.get("card_number") or "").strip()
+        card_expiry = (request.data.get("card_expiry") or "").strip()
+        card_cvc = (request.data.get("card_cvc") or "").strip()
+
+        is_card = payment_method in ["visa", "mastercard"]
+
+        if is_card:
+            if not card_holder_name:
+                return Response({"detail": "Card holder name is required."}, status=400)
+            if not card_number or len(card_number) < 12:
+                return Response({"detail": "Valid card number is required."}, status=400)
+            if not card_expiry:
+                return Response({"detail": "Expiry date is required."}, status=400)
+            if not card_cvc or len(card_cvc) < 3:
+                return Response({"detail": "CVC is required."}, status=400)
+
+            card_last4 = card_number[-4:]
+            payer_phone = ""  # not needed for card
+        else:
+            if not payer_phone:
+                return Response({"detail": "Phone number is required for this payment method."}, status=400)
+            # clear card fields
+            card_holder_name = ""
+            card_last4 = ""
+            card_expiry = ""
+
+        with transaction.atomic():
+            donation = Donation.objects.create(
+                recipient=fundraiser.owner,
+                fundraiser=fundraiser,
+                donor=request.user,
+                donor_name=donor_name,
+                amount=amount_dec,
+                tip_amount=tip_dec,
+                frequency_label=frequency_label,
+                payment_method=payment_method,
+                is_anonymous=is_anonymous,
+                message=message,
+                status=Donation.STATUS_RECEIVED,
+                payer_phone=payer_phone,
+                card_holder_name=card_holder_name,
+                card_number_last4=card_last4,
+                card_expiry=card_expiry,
+            )
+
+        return Response({
+            "id": donation.id,
+            "status": donation.status,
+            "message": "Donation received",
+        }, status=201)

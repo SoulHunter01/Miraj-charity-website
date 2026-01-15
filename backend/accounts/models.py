@@ -146,6 +146,17 @@ class Donation(models.Model):
     amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     frequency_label = models.CharField(max_length=50, blank=True, default="")  # e.g. "weekly"
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_RECEIVED)
+    tip_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    payment_method = models.CharField(max_length=30, blank=True, default="")  # e.g. "visa"
+    is_anonymous = models.BooleanField(default=False)
+    message = models.TextField(blank=True, default="")
+
+    payer_phone = models.CharField(max_length=30, blank=True, default="")
+
+    card_holder_name = models.CharField(max_length=120, blank=True, default="")
+    card_number_last4 = models.CharField(max_length=4, blank=True, default="")
+    card_expiry = models.CharField(max_length=10, blank=True, default="")  # "MM/YY"
 
     created_at = models.DateTimeField(auto_now_add=True)
 

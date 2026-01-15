@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  Search,
-  Filter,
-  Users,
-  Clock,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Search, Filter, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 
 import Navbar from "../components/common/Navbar";
 import Footer from "../components/common/Footer";
@@ -24,101 +18,159 @@ const SORT_OPTIONS = [
   { value: "needs_attention", label: "Needs Attention" },
 ];
 
+const FALLBACK_IMG = "https://via.placeholder.com/1200x700?text=Fundraiser";
+
 function formatMoney(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "0";
   return n.toLocaleString();
 }
 
-function clampText(text, max = 110) {
+function clampText(text, max = 90) {
   const t = (text || "").trim();
   if (!t) return "";
   return t.length > max ? t.slice(0, max).trim() + "..." : t;
 }
 
-function FundraiserCard({ f, onClick }) {
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function formatCountdown(msLeft) {
+  if (!Number.isFinite(msLeft)) return "";
+  if (msLeft <= 0) return "Ended";
+
+  const totalSeconds = Math.floor(msLeft / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const hhmmss = `${pad2(hours)}:${pad2(minutes)}:${pad2(seconds)} left`;
+  return days > 0 ? `${days}d ${hhmmss}` : hhmmss;
+}
+
+function useCountdown(deadlineAtIso) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!deadlineAtIso) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [deadlineAtIso]);
+
+  const msLeft = useMemo(() => {
+    if (!deadlineAtIso) return NaN;
+    const deadlineMs = Date.parse(deadlineAtIso);
+    if (!Number.isFinite(deadlineMs)) return NaN;
+    return deadlineMs - now;
+  }, [deadlineAtIso, now]);
+
+  return {
+    msLeft,
+    text: formatCountdown(msLeft),
+  };
+}
+
+function FundraiserCard({ f, onClick, onDonate }) {
   const raised = Number(f.raised || 0);
   const goal = Number(f.target_amount || 0);
   const percentage = goal > 0 ? Math.round((raised / goal) * 100) : 0;
 
+  const supporters = f.supporters ?? 0;
+  const countdown = useCountdown(f.deadline_at);
+
   return (
-    <div onClick={onClick} className="cursor-pointer">
-      <Card padding={false} className="overflow-hidden border border-emerald-100 hover:shadow-md transition">
-        <div className="relative h-44 overflow-hidden bg-emerald-50">
-          <img
-            src={f.image || "https://via.placeholder.com/600x400?text=Fundraiser"}
-            alt={f.title}
-            className="w-full h-full object-cover"
-          />
-        </div>
+    <div
+      onClick={onClick}
+      className="cursor-pointer overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition"
+    >
+      {/* Image */}
+      <div className="h-44 w-full bg-gray-100 overflow-hidden">
+        <img
+          src={f.image || FALLBACK_IMG}
+          alt={f.title}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          onError={(e) => {
+            e.currentTarget.src = FALLBACK_IMG;
+          }}
+        />
+      </div>
 
-        <div className="p-4">
-          <div className="text-[11px] text-red-500 font-semibold mb-1">
-            {/* You can make this dynamic later */}
-            Fundraiser
+      {/* Progress bar */}
+      <div className="h-2 w-full bg-gray-200">
+        <div
+          className="h-full bg-orange-400"
+          style={{ width: `${Math.min(percentage, 100)}%` }}
+        />
+      </div>
+
+      {/* Raised / Goal */}
+      <div className="flex items-center justify-between px-5 pt-3 text-[13px]">
+        <span className="text-orange-500 font-semibold">
+          Raised: {formatMoney(raised)}
+        </span>
+        <span className="text-gray-700 font-semibold">
+          Goal: {formatMoney(goal)}
+        </span>
+      </div>
+
+      {/* Title + Description */}
+      <div className="px-5 pt-3">
+        <h3 className="text-[20px] font-extrabold text-gray-900 leading-snug text-center">
+          {f.title}
+        </h3>
+        <p className="mt-2 text-[13px] text-gray-600 leading-relaxed text-center">
+          {clampText(f.description || "", 120)}
+        </p>
+      </div>
+
+      {/* Bottom row */}
+      <div className="mt-4 px-5 pb-5 flex items-center justify-between">
+        {/* supporters / donees */}
+        <div className="flex items-center gap-2 text-orange-500">
+          <div className="flex -space-x-2">
+            <span className="w-7 h-7 rounded-full bg-gray-300 border-2 border-white" />
+            <span className="w-7 h-7 rounded-full bg-gray-500 border-2 border-white" />
           </div>
-
-          <h3 className="text-sm font-bold text-gray-900 leading-snug">
-            {f.title}
-          </h3>
-
-          <p className="mt-2 text-xs text-gray-500 leading-relaxed">
-            {clampText(f.description || "", 120)}
-          </p>
-
-          {/* progress */}
-          <div className="mt-3">
-            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div
-                className="h-full bg-emerald-600 rounded-full"
-                style={{ width: `${Math.min(percentage, 100)}%` }}
-              />
-            </div>
-            <div className="mt-2 flex items-center justify-between text-xs text-gray-600">
-              <span>
-                Rs <span className="font-semibold text-gray-900">{formatMoney(raised)}</span> of{" "}
-                Rs {formatMoney(goal)}
-              </span>
-              <span className="font-semibold">{Math.min(percentage, 100)}%</span>
-            </div>
-          </div>
-
-          {/* footer */}
-          <div className="mt-3 flex items-center justify-between">
-            <div className="flex items-center gap-3 text-xs text-gray-600">
-              <span className="flex items-center gap-1">
-                <Users className="w-4 h-4" />
-                {f.supporters ?? 0}
-              </span>
-              <span className="flex items-center gap-1">
-                <Clock className="w-4 h-4" />
-                {f.daysLeft ?? 0}d left
-              </span>
-            </div>
-
-            <button
-              type="button"
-              className="rounded-full bg-sky-500 px-4 py-1.5 text-xs text-white hover:bg-sky-600"
-              onClick={(e) => {
-                e.stopPropagation();
-                // placeholder: later we'll open donate page
-                alert("Donate flow next ✅");
-              }}
-            >
-              Donate
-            </button>
+          <div className="leading-tight">
+            <div className="text-sm font-bold">{supporters}</div>
+            <div className="text-xs font-semibold -mt-0.5">donees</div>
           </div>
         </div>
-      </Card>
+
+        <button
+          type="button"
+          className="rounded-full bg-sky-500 px-8 py-2 text-white text-sm font-semibold hover:bg-sky-600 active:scale-[0.99]"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDonate?.(f);
+          }}
+        >
+          Donate
+        </button>
+
+        {/* time left */}
+        <div className="flex items-center gap-2 text-orange-500">
+          <div className="w-9 h-9 rounded-full border-2 border-orange-400 flex items-center justify-center">
+            <Clock className="w-4 h-4 text-orange-500" />
+          </div>
+          <div className="text-xs font-semibold">
+            {countdown.text || (f.daysLeft != null ? `${f.daysLeft}d left` : "")}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-function HorizontalSection({ title, items, onPrev, onNext }) {
+function HorizontalSection({ title, items, onPrev, onNext, onDonate, onOpen }) {
   return (
     <div className="mb-8">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+
         <div className="flex gap-2">
           <button
             type="button"
@@ -138,10 +190,17 @@ function HorizontalSection({ title, items, onPrev, onNext }) {
       </div>
 
       <div className="overflow-hidden">
-        <div id={title} className="flex gap-4 overflow-x-auto scroll-smooth pb-2">
+        <div
+          id={title}
+          className="flex gap-4 overflow-x-auto scroll-smooth pb-2 snap-x snap-mandatory"
+        >
           {items.map((f) => (
-            <div key={f.id} className="min-w-[260px] max-w-[260px]">
-              <FundraiserCard f={f} />
+            <div key={f.id} className="min-w-[340px] max-w-[340px] snap-start">
+              <FundraiserCard
+                f={f}
+                onDonate={onDonate}
+                onClick={() => onOpen?.(f)}
+              />
             </div>
           ))}
         </div>
@@ -151,11 +210,15 @@ function HorizontalSection({ title, items, onPrev, onNext }) {
 }
 
 export default function DiscoverPage() {
+  const navigate = useNavigate();
+
   const [activeCategory, setActiveCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("newest");
 
-  const [categories, setCategories] = useState([{ id: "all", label: "All Causes", count: 0 }]);
+  const [categories, setCategories] = useState([
+    { id: "all", label: "All Causes", count: 0 },
+  ]);
 
   // main list
   const [fundraisers, setFundraisers] = useState([]);
@@ -176,12 +239,18 @@ export default function DiscoverPage() {
 
   const hasMore = fundraisers.length < total;
 
-  // Categories (counts)
   useEffect(() => {
     (async () => {
       try {
-        const data = await apiJson("/api/auth/fundraisers/categories/", { method: "GET", auth: false });
-        setCategories(Array.isArray(data) && data.length ? data : [{ id: "all", label: "All Causes", count: 0 }]);
+        const data = await apiJson("/api/auth/fundraisers/categories/", {
+          method: "GET",
+          auth: false,
+        });
+        setCategories(
+          Array.isArray(data) && data.length
+            ? data
+            : [{ id: "all", label: "All Causes", count: 0 }]
+        );
       } catch (e) {
         console.error(e);
       }
@@ -214,6 +283,7 @@ export default function DiscoverPage() {
 
     try {
       reset ? setLoadingMain(true) : setLoadingMore(true);
+
       const data = await apiJson(url, { method: "GET", auth: false });
 
       const results = data?.results || [];
@@ -243,8 +313,26 @@ export default function DiscoverPage() {
 
     try {
       const [urgentRes, attentionRes] = await Promise.all([
-        apiJson(buildDiscoverUrl({ categoryLabel: catLabel, q: searchQuery, sort: "ending_soon", off: 0, lim: 6 }), { method: "GET", auth: false }),
-        apiJson(buildDiscoverUrl({ categoryLabel: catLabel, q: searchQuery, sort: "needs_attention", off: 0, lim: 6 }), { method: "GET", auth: false }),
+        apiJson(
+          buildDiscoverUrl({
+            categoryLabel: catLabel,
+            q: searchQuery,
+            sort: "ending_soon",
+            off: 0,
+            lim: 6,
+          }),
+          { method: "GET", auth: false }
+        ),
+        apiJson(
+          buildDiscoverUrl({
+            categoryLabel: catLabel,
+            q: searchQuery,
+            sort: "needs_attention",
+            off: 0,
+            lim: 6,
+          }),
+          { method: "GET", auth: false }
+        ),
       ]);
 
       setUrgent(urgentRes?.results || []);
@@ -256,7 +344,6 @@ export default function DiscoverPage() {
     }
   };
 
-  // Load initial main + sections when category changes
   useEffect(() => {
     fetchMain({ reset: true });
     fetchTopSections();
@@ -272,25 +359,30 @@ export default function DiscoverPage() {
   const onChangeSort = (v) => {
     setSortBy(v);
     setOffset(0);
-    // reset list with new sort
     setTimeout(() => fetchMain({ reset: true }), 0);
   };
 
-  // horizontal scroll controls
   const scrollById = (id, delta) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.scrollBy({ left: delta, behavior: "smooth" });
   };
 
+  const openFundraiser = (f) => {
+    navigate(`/donate/${f.id}`);
+  };
+
+  const donateFundraiser = (f) => {
+    navigate(`/donate/${f.id}`);
+  };
+
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
 
-      {/* Top area (match screenshot style) */}
+      {/* Top area */}
       <section className="bg-[#e9efee] py-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Search bar block */}
           <div className="bg-white rounded-xl border border-emerald-100 p-5">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-700" />
@@ -322,15 +414,15 @@ export default function DiscoverPage() {
                   type="button"
                   className="rounded-full border border-emerald-200 px-6 py-2 text-sm text-gray-700 hover:bg-emerald-50"
                   onClick={() => {
-                    // scroll to categories on left (nice UX)
-                    document.getElementById("discover-categories")?.scrollIntoView({ behavior: "smooth" });
+                    document
+                      .getElementById("discover-categories")
+                      ?.scrollIntoView({ behavior: "smooth" });
                   }}
                 >
                   Categories
                 </button>
               </div>
 
-              {/* Sort By on right */}
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-600">Sort by:</span>
                 <select
@@ -389,27 +481,32 @@ export default function DiscoverPage() {
 
             {/* Right side */}
             <div className="lg:col-span-3">
-              {/* Sections like screenshot */}
               <HorizontalSection
                 title="Urgent funds needed"
                 items={urgent}
-                onPrev={() => scrollById("Urgent funds needed", -320)}
-                onNext={() => scrollById("Urgent funds needed", 320)}
+                onPrev={() => scrollById("Urgent funds needed", -360)}
+                onNext={() => scrollById("Urgent funds needed", 360)}
+                onDonate={donateFundraiser}
+                onOpen={openFundraiser}
               />
 
               <HorizontalSection
                 title="Fundraisers in need of more attention"
                 items={attention}
-                onPrev={() => scrollById("Fundraisers in need of more attention", -320)}
-                onNext={() => scrollById("Fundraisers in need of more attention", 320)}
+                onPrev={() => scrollById("Fundraisers in need of more attention", -360)}
+                onNext={() => scrollById("Fundraisers in need of more attention", 360)}
+                onDonate={donateFundraiser}
+                onOpen={openFundraiser}
               />
 
-              {/* Main grid */}
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-base font-semibold text-gray-800">
                   {activeCategory === "all" ? "All fundraisers" : selectedCategoryLabel}
                   {searchQuery.trim() ? (
-                    <span className="text-gray-500 font-normal"> — results for “{searchQuery.trim()}”</span>
+                    <span className="text-gray-500 font-normal">
+                      {" "}
+                      — results for “{searchQuery.trim()}”
+                    </span>
                   ) : null}
                 </h2>
               </div>
@@ -420,11 +517,15 @@ export default function DiscoverPage() {
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {fundraisers.map((f) => (
-                      <FundraiserCard key={f.id} f={f} />
+                      <FundraiserCard
+                        key={f.id}
+                        f={f}
+                        onDonate={donateFundraiser}
+                        onClick={() => openFundraiser(f)}
+                      />
                     ))}
                   </div>
 
-                  {/* Load More */}
                   {hasMore && (
                     <div className="text-center mt-10">
                       <Button

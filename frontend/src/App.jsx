@@ -39,6 +39,10 @@ import FundraiserDetails from "./pages/fundraiser/FundraiserDetails";
 import LinkPreviousFundraiser from "./pages/fundraiser/LinkPreviousFundraiser";
 import FundraiserPayout from "./pages/fundraiser/FundraiserPayout";
 
+import FundraiserPublicPage from "./pages/donate/FundraiserPublicPage";
+import DonateCheckoutPage from "./pages/donate/DonateCheckoutPage";
+import DonatePaymentPage from "./pages/donate/DonatePaymentPage";
+
 export default function App() {
   const [modal, setModal] = useState({
     open: false,
@@ -106,6 +110,11 @@ export default function App() {
         <Route path="/fundraisers/:fundraiserId/details" element={<FundraiserDetails />} />
         <Route path="/fundraisers/:fundraiserId/link-previous" element={<LinkPreviousFundraiser />} />
         <Route path="/fundraisers/:fundraiserId/payout" element={<FundraiserPayout />} />
+
+        {/* Donate Flow */}
+        <Route path="/donate/:fundraiserId" element={<FundraiserPublicPage openAuthModal={openAuthModal} />} />
+        <Route path="/donate/:fundraiserId/checkout" element={<DonateCheckoutPage />} />
+        <Route path="/donate/:fundraiserId/confirm" element={<DonatePaymentPage />} />
 
         {/* User */}
         <Route path="/profile" element={<ProfilePage />} />
