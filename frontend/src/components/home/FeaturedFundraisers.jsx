@@ -1,81 +1,17 @@
 import Card from "../common/Card";
 import { Users, Clock, Heart, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { apiJson } from "../../services/apiAuth";
 
 export default function FeaturedFundraisers() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [slidesToShow, setSlidesToShow] = useState(3);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
-  const fundraisers = [
-    {
-      title: "Support Local Children's Hospital Wing",
-      organizer: "Sarah Johnson",
-      raised: 45230,
-      goal: 50000,
-      supporters: 892,
-      category: "Medical",
-      daysLeft: 12,
-      image:
-        "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=600&h=400&fit=crop&q=80",
-    },
-    {
-      title: "Wildfire Community Relief Fund",
-      organizer: "Community Foundation",
-      raised: 128500,
-      goal: 150000,
-      supporters: 2145,
-      category: "Emergency",
-      daysLeft: 8,
-      image:
-        "https://images.unsplash.com/photo-1469571486292-0ba58a3f068b?w=600&h=400&fit=crop&q=80",
-    },
-    {
-      title: "Scholarships for Underprivileged Students",
-      organizer: "Education Alliance",
-      raised: 35800,
-      goal: 40000,
-      supporters: 567,
-      category: "Education",
-      daysLeft: 15,
-      image:
-        "https://images.unsplash.com/photo-1427504494785-3a9ca7044f45?w=600&h=400&fit=crop&q=80",
-    },
-    {
-      title: "Animal Shelter Expansion Project",
-      organizer: "Pets Haven Charity",
-      raised: 22100,
-      goal: 30000,
-      supporters: 423,
-      category: "Animals",
-      daysLeft: 20,
-      image:
-        "https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=600&h=400&fit=crop&q=80",
-    },
-    {
-      title: "Clean Water Initiative for Rural Areas",
-      organizer: "Water for All",
-      raised: 67800,
-      goal: 80000,
-      supporters: 1243,
-      category: "Community",
-      daysLeft: 18,
-      image:
-        "https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=600&h=400&fit=crop&q=80",
-    },
-    {
-      title: "Small Business Recovery Fund",
-      organizer: "Local Business Alliance",
-      raised: 89200,
-      goal: 100000,
-      supporters: 756,
-      category: "Business",
-      daysLeft: 10,
-      image:
-        "https://images.unsplash.com/photo-1556761175-b413da4baf72?w=600&h=400&fit=crop&q=80",
-    },
-  ];
+  const [fundraisers, setFundraisers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
+  // responsive slides
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth < 640) setSlidesToShow(1);
@@ -88,31 +24,99 @@ export default function FeaturedFundraisers() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // fetch featured from backend
   useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        const data = await apiJson("/api/auth/fundraisers/featured/?limit=12", {
+          method: "GET",
+          auth: false, // public
+        });
+        setFundraisers(Array.isArray(data) ? data : []);
+        setCurrentIndex(0);
+      } catch (e) {
+        console.error("Failed to load featured fundraisers:", e);
+        setFundraisers([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const maxIndex = useMemo(() => {
+    const len = fundraisers.length;
+    return Math.max(0, len - slidesToShow);
+  }, [fundraisers.length, slidesToShow]);
+
+  // autoplay
+  useEffect(() => {
+    if (fundraisers.length <= slidesToShow) return;
+
     const interval = setInterval(() => {
       goToNext();
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [currentIndex, slidesToShow]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentIndex, slidesToShow, fundraisers.length]);
 
   const goToPrevious = () => {
     if (isTransitioning) return;
+    if (fundraisers.length === 0) return;
+
     setIsTransitioning(true);
-    setCurrentIndex((prev) =>
-      prev === 0 ? fundraisers.length - slidesToShow : prev - 1
-    );
+    setCurrentIndex((prev) => (prev === 0 ? maxIndex : prev - 1));
     setTimeout(() => setIsTransitioning(false), 500);
   };
 
   const goToNext = () => {
     if (isTransitioning) return;
+    if (fundraisers.length === 0) return;
+
     setIsTransitioning(true);
-    setCurrentIndex(
-      (prev) => (prev + 1) % (fundraisers.length - slidesToShow + 1)
-    );
+    setCurrentIndex((prev) => (prev >= maxIndex ? 0 : prev + 1));
     setTimeout(() => setIsTransitioning(false), 500);
   };
+
+  const formatMoney = (v) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "0";
+    return n.toLocaleString();
+  };
+
+  if (loading) {
+    return (
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center text-sm text-gray-600">Loading featured fundraisers...</div>
+        </div>
+      </section>
+    );
+  }
+
+  if (!fundraisers.length) {
+    return (
+      <section className="py-20 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center mb-12">
+            <div>
+              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
+                Featured fundraisers
+              </h2>
+              <p className="text-lg text-gray-600">
+                Discover inspiring causes making a real difference
+              </p>
+            </div>
+          </div>
+
+          <div className="text-center text-sm text-gray-600">
+            No active fundraisers available right now.
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="py-20 bg-white">
@@ -152,14 +156,14 @@ export default function FeaturedFundraisers() {
               transform: `translateX(-${currentIndex * (100 / slidesToShow)}%)`,
             }}
           >
-            {fundraisers.map((fundraiser, index) => {
-              const percentage = Math.round(
-                (fundraiser.raised / fundraiser.goal) * 100
-              );
+            {fundraisers.map((f) => {
+              const raised = Number(f.collected_amount || 0);
+              const goal = Number(f.target_amount || 0);
+              const percentage = goal > 0 ? Math.round((raised / goal) * 100) : 0;
 
               return (
                 <div
-                  key={index}
+                  key={f.id}
                   className="flex-shrink-0 px-3"
                   style={{ width: `${100 / slidesToShow}%` }}
                 >
@@ -167,14 +171,14 @@ export default function FeaturedFundraisers() {
                     {/* Image */}
                     <div className="relative h-56 overflow-hidden">
                       <img
-                        src={fundraiser.image}
-                        alt={fundraiser.title}
+                        src={f.image || "https://via.placeholder.com/600x400?text=Fundraiser"}
+                        alt={f.title}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
 
                       <span className="absolute top-4 left-4 px-3 py-1 bg-white/90 text-emerald-700 text-xs font-semibold rounded-full">
-                        {fundraiser.category}
+                        {f.category || "General"}
                       </span>
 
                       <button className="absolute top-4 right-4 w-9 h-9 bg-white/90 rounded-full flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors">
@@ -185,20 +189,20 @@ export default function FeaturedFundraisers() {
                     {/* Content */}
                     <div className="p-5">
                       <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-emerald-700 transition-colors line-clamp-2">
-                        {fundraiser.title}
+                        {f.title}
                       </h3>
 
                       <p className="text-sm text-gray-600 mb-4">
-                        by <span className="font-semibold">{fundraiser.organizer}</span>
+                        by <span className="font-semibold">{f.organizer || "Unknown"}</span>
                       </p>
 
                       {/* Progress */}
                       <div className="mb-4">
                         <div className="flex justify-between text-sm mb-2">
                           <span className="font-bold text-gray-900">
-                            ${fundraiser.raised.toLocaleString()}
+                            Rs {formatMoney(raised)}
                           </span>
-                          <span className="text-gray-600">{percentage}%</span>
+                          <span className="text-gray-600">{Math.min(percentage, 100)}%</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
@@ -207,7 +211,7 @@ export default function FeaturedFundraisers() {
                           ></div>
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
-                          of ${fundraiser.goal.toLocaleString()} goal
+                          of Rs {formatMoney(goal)} goal
                         </div>
                       </div>
 
@@ -215,11 +219,11 @@ export default function FeaturedFundraisers() {
                       <div className="flex justify-between items-center pt-4 border-t border-gray-100 text-sm text-gray-600">
                         <div className="flex items-center gap-1">
                           <Users className="w-4 h-4" />
-                          {fundraiser.supporters}
+                          {f.donations_count ?? 0}
                         </div>
                         <div className="flex items-center gap-1">
                           <Clock className="w-4 h-4" />
-                          {fundraiser.daysLeft} days left
+                          {f.days_left ?? 0} days left
                         </div>
                       </div>
                     </div>

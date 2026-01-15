@@ -2,7 +2,10 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from .models import PayoutPreference
 from .models import NotificationPreference, AccountSetting, Donation, Fundraiser, FundraiserDocument, FundraiserPayout
-from django.db.models import Count
+from django.db.models import Count, Sum, Q
+from datetime import date
+from django.db.models.functions import Coalesce
+from decimal import Decimal
 
 User = get_user_model()
 
@@ -497,3 +500,62 @@ class FundraiserPayoutSetupSerializer(serializers.Serializer):
                 raise serializers.ValidationError("Duplicate method in payout_methods.")
             seen.add(m["method"])
         return methods
+
+class FeaturedFundraiserSerializer(serializers.ModelSerializer):
+    organizer = serializers.CharField(source="owner.username", read_only=True)
+    donations_count = serializers.IntegerField(read_only=True)
+    collected_amount = serializers.DecimalField(
+        source="collected_amount_real",
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+    )
+    days_left = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Fundraiser
+        fields = [
+            "id",
+            "title",
+            "image",
+            "category",
+            "target_amount",
+            "collected_amount",
+            "donations_count",
+            "organizer",
+            "days_left",
+        ]
+
+    def get_days_left(self, obj):
+        if not obj.deadline:
+            return None
+        delta = (obj.deadline - date.today()).days
+        return max(delta, 0)
+
+class DiscoverFundraiserSerializer(serializers.ModelSerializer):
+    organizer = serializers.CharField(source="owner.username", read_only=True)
+    supporters = serializers.IntegerField(source="donations_count", read_only=True)
+    raised = serializers.DecimalField(source="collected_amount_real", max_digits=12, decimal_places=2, read_only=True)
+    daysLeft = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Fundraiser
+        fields = [
+            "id",
+            "title",
+            "description",
+            "image",
+            "category",
+            "location",
+            "organizer",
+            "target_amount",
+            "raised",
+            "supporters",
+            "daysLeft",
+        ]
+
+    def get_daysLeft(self, obj):
+        if not obj.deadline:
+            return None
+        d = (obj.deadline - date.today()).days
+        return max(d, 0)

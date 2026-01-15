@@ -25,7 +25,8 @@ from .serializers import (
     FundraiserEditSerializer, FundraiserDocumentSerializer,
     StartFundraiserSerializer, FundraiserStartDetailsSerializer,
     FundraiserBasicSerializer, FundraiserLinkOptionSerializer,
-    FundraiserPayoutSetupSerializer
+    FundraiserPayoutSetupSerializer, FeaturedFundraiserSerializer,
+    DiscoverFundraiserSerializer,
 )
 
 class SignupView(APIView):
@@ -709,3 +710,114 @@ class FundraiserPublishView(APIView):
         "image": fundraiser.image.url if fundraiser.image else "",
         "status": fundraiser.status,
     })
+
+class FeaturedFundraisersView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        limit = int(request.query_params.get("limit", 12))
+
+        qs = (
+            Fundraiser.objects
+            .filter(status=Fundraiser.STATUS_ACTIVE)
+            .annotate(
+                collected_amount_real=Coalesce(
+                    Sum(
+                        "donations__amount",
+                        filter=Q(donations__status=Donation.STATUS_RECEIVED)
+                    ),
+                    Decimal("0.00")
+                ),
+                donations_count=Coalesce(
+                    Count(
+                        "donations",
+                        filter=Q(donations__status=Donation.STATUS_RECEIVED)
+                    ),
+                    0
+                ),
+            )
+            .order_by("-collected_amount_real", "-created_at")[:limit]
+        )
+
+        return Response(FeaturedFundraiserSerializer(qs, many=True).data)
+
+class FundraiserCategoriesView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        # categories from DB (only active)
+        qs = (
+            Fundraiser.objects
+            .filter(status=Fundraiser.STATUS_ACTIVE)
+            .values("category")
+            .annotate(count=Count("id"))
+            .order_by("-count", "category")
+        )
+
+        categories = [{"id": "all", "label": "All Causes", "count": Fundraiser.objects.filter(status=Fundraiser.STATUS_ACTIVE).count()}]
+        for row in qs:
+            cat = (row["category"] or "").strip()
+            if not cat:
+                continue
+            categories.append({
+                "id": cat.lower().replace(" ", "_"),
+                "label": cat,
+                "count": row["count"],
+            })
+
+        return Response(categories)
+
+
+class FundraiserDiscoverView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        q = (request.query_params.get("q") or "").strip()
+        category = (request.query_params.get("category") or "").strip()
+        offset = int(request.query_params.get("offset", 0))
+        limit = int(request.query_params.get("limit", 6))
+        sort = (request.query_params.get("sort") or "newest").strip().lower()
+
+        qs = Fundraiser.objects.filter(status=Fundraiser.STATUS_ACTIVE)
+
+        if category and category.lower() != "all":
+            # category is passed as label from frontend
+            qs = qs.filter(category__iexact=category)
+
+        if q:
+            qs = qs.filter(
+                Q(title__icontains=q) |
+                Q(location__icontains=q) |
+                Q(owner__username__icontains=q)
+            )
+
+        sort_map = {
+            "newest": "-created_at",
+            "most_funded": "-collected_amount_real",
+            "ending_soon": "deadline",
+            "most_supporters": "-donations_count",
+            "needs_attention": "donations_count",  # low supporters first
+        }
+
+        qs = qs.annotate(
+            collected_amount_real=Coalesce(
+                Sum("donations__amount", filter=Q(donations__status=Donation.STATUS_RECEIVED)),
+                Decimal("0.00")
+            ),
+            donations_count=Coalesce(
+                Count("donations", filter=Q(donations__status=Donation.STATUS_RECEIVED)),
+                0
+            )
+        )
+
+        qs = qs.order_by(sort_map.get(sort, "-created_at"))
+
+        total = qs.count()
+        page = qs[offset: offset + limit]
+
+        return Response({
+            "results": DiscoverFundraiserSerializer(page, many=True).data,
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+        })
