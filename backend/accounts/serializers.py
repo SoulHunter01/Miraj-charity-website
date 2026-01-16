@@ -2,7 +2,12 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from .models import PayoutPreference
 from .models import NotificationPreference, AccountSetting, Donation, Fundraiser, FundraiserDocument, FundraiserPayout
-from django.db.models import Count
+from django.db.models import Count, Sum, Q
+from datetime import date, time, datetime
+from django.utils import timezone
+from django.db.models.functions import Coalesce
+from decimal import Decimal
+from django.core.files.storage import default_storage
 
 User = get_user_model()
 
@@ -497,3 +502,165 @@ class FundraiserPayoutSetupSerializer(serializers.Serializer):
                 raise serializers.ValidationError("Duplicate method in payout_methods.")
             seen.add(m["method"])
         return methods
+
+class FeaturedFundraiserSerializer(serializers.ModelSerializer):
+    organizer = serializers.CharField(source="owner.username", read_only=True)
+    donations_count = serializers.IntegerField(read_only=True)
+    collected_amount = serializers.DecimalField(
+        source="collected_amount_real",
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+    )
+    days_left = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Fundraiser
+        fields = [
+            "id",
+            "title",
+            "image",
+            "category",
+            "target_amount",
+            "collected_amount",
+            "donations_count",
+            "organizer",
+            "days_left",
+        ]
+
+    def get_days_left(self, obj):
+        if not obj.deadline:
+            return None
+        delta = (obj.deadline - date.today()).days
+        return max(delta, 0)
+
+class DiscoverFundraiserSerializer(serializers.ModelSerializer):
+    organizer = serializers.CharField(source="owner.username", read_only=True)
+    supporters = serializers.IntegerField(source="donations_count", read_only=True)
+    raised = serializers.DecimalField(source="collected_amount_real", max_digits=12, decimal_places=2, read_only=True)
+
+    daysLeft = serializers.SerializerMethodField()
+    deadline_at = serializers.SerializerMethodField()  # ✅ NEW
+
+    class Meta:
+        model = Fundraiser
+        fields = [
+            "id",
+            "title",
+            "description",
+            "image",
+            "category",
+            "location",
+            "organizer",
+            "target_amount",
+            "raised",
+            "supporters",
+            "daysLeft",
+            "deadline_at",   # ✅ NEW
+        ]
+
+    def get_daysLeft(self, obj):
+        if not obj.deadline:
+            return None
+        d = (obj.deadline - date.today()).days
+        return max(d, 0)
+
+    def get_deadline_at(self, obj):
+        """
+        Returns an ISO datetime for countdown.
+        We treat Fundraiser.deadline (DateField) as end-of-day in server timezone.
+        """
+        if not obj.deadline:
+            return None
+
+        # end of that date (23:59:59)
+        dt = datetime.combine(obj.deadline, time(23, 59, 59))
+
+        # make timezone-aware (server tz)
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, timezone.get_current_timezone())
+
+        # return ISO string
+        return dt.isoformat()
+
+class PublicDonationListSerializer(serializers.ModelSerializer):
+    donor_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Donation
+        fields = ["id", "donor_display", "amount", "created_at"]
+
+    def get_donor_display(self, obj):
+        if getattr(obj, "is_anonymous", False):
+            return "Anonymous"
+        name = (obj.donor_name or "").strip()
+        if name:
+            return name
+        if obj.donor and obj.donor.username:
+            return obj.donor.username
+        return "Anonymous"
+
+
+class PublicFundraiserDetailSerializer(serializers.ModelSerializer):
+    organizer = serializers.CharField(source="owner.username", read_only=True)
+    raised = serializers.DecimalField(source="collected_amount_real", max_digits=12, decimal_places=2, read_only=True)
+    supporters = serializers.IntegerField(source="donations_count", read_only=True)
+
+    image_url = serializers.SerializerMethodField()
+    deadline_at = serializers.SerializerMethodField()
+    documents = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Fundraiser
+        fields = [
+            "id",
+            "title",
+            "description",
+            "category",
+            "location",
+            "organizer",
+            "target_amount",
+            "raised",
+            "supporters",
+            "deadline",
+            "deadline_at",
+            "image_url",
+            "documents",
+        ]
+
+    def get_image_url(self, obj):
+        if not obj.image:
+            return ""
+        # signed URL comes from storage backend (R2)
+        try:
+            return default_storage.url(obj.image.name)
+        except Exception:
+            return ""
+
+    def get_deadline_at(self, obj):
+        # If you later convert to DateTimeField, return that directly.
+        if not obj.deadline:
+            return None
+        # end-of-day (00:00:00 also ok, but end-of-day feels better UX)
+        from datetime import datetime, time
+        from django.utils import timezone
+
+        dt = datetime.combine(obj.deadline, time(23, 59, 59))
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, timezone.get_current_timezone())
+        return dt.isoformat()
+
+    def get_documents(self, obj):
+        out = []
+        for d in obj.documents.all().order_by("-uploaded_at"):
+            try:
+                url = default_storage.url(d.file.name)
+            except Exception:
+                url = ""
+            out.append({
+                "id": d.id,
+                "name": (d.file.name.split("/")[-1] if d.file else ""),
+                "url": url,
+                "uploaded_at": d.uploaded_at,
+            })
+        return out

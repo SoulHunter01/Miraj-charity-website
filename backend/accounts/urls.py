@@ -19,6 +19,8 @@ from .views import (
     FundraiserBasicView, FundraiserDetailsView,
     MyActiveFundraisersView, FundraiserLinkPreviousView,
     FundraiserPayoutSetupView, FundraiserPublishView,
+    FeaturedFundraisersView, FundraiserCategoriesView, FundraiserDiscoverView,
+    FundraiserPublicDetailView, FundraiserDonateCreateView,
 )
 
 urlpatterns = [
@@ -55,4 +57,9 @@ urlpatterns = [
     path("fundraisers/<int:fundraiser_id>/link-previous/", FundraiserLinkPreviousView.as_view(), name="link-previous"),
     path("fundraisers/<int:fundraiser_id>/payout-setup/", FundraiserPayoutSetupView.as_view(), name="fundraiser-payout-setup"),
     path("fundraisers/<int:fundraiser_id>/publish/", FundraiserPublishView.as_view(), name="fundraiser-publish"),
+    path("fundraisers/featured/", FeaturedFundraisersView.as_view(), name="featured-fundraisers"),
+    path("fundraisers/categories/", FundraiserCategoriesView.as_view()),
+    path("fundraisers/discover/", FundraiserDiscoverView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/public/", FundraiserPublicDetailView.as_view()),
+    path("fundraisers/<int:fundraiser_id>/donate/", FundraiserDonateCreateView.as_view()),
 ]

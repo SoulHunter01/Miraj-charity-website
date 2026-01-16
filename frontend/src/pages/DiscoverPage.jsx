@@ -1,174 +1,468 @@
-import { useState } from "react";
-import {
-  Search,
-  Filter,
-  Heart,
-  Users,
-  Clock,
-  TrendingUp,
-  MapPin,
-  Tag,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Search, Filter, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 
 import Navbar from "../components/common/Navbar";
 import Footer from "../components/common/Footer";
 import Card from "../components/common/Card";
 import Button from "../components/common/Button";
+import { apiJson } from "../services/apiAuth";
+
+const PAGE_SIZE = 6;
+
+const SORT_OPTIONS = [
+  { value: "newest", label: "Most Recent" },
+  { value: "most_funded", label: "Most Funded" },
+  { value: "ending_soon", label: "Ending Soon" },
+  { value: "most_supporters", label: "Most Supporters" },
+  { value: "needs_attention", label: "Needs Attention" },
+];
+
+const FALLBACK_IMG = "https://via.placeholder.com/1200x700?text=Fundraiser";
+
+function formatMoney(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "0";
+  return n.toLocaleString();
+}
+
+function clampText(text, max = 90) {
+  const t = (text || "").trim();
+  if (!t) return "";
+  return t.length > max ? t.slice(0, max).trim() + "..." : t;
+}
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function formatCountdown(msLeft) {
+  if (!Number.isFinite(msLeft)) return "";
+  if (msLeft <= 0) return "Ended";
+
+  const totalSeconds = Math.floor(msLeft / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const hhmmss = `${pad2(hours)}:${pad2(minutes)}:${pad2(seconds)} left`;
+  return days > 0 ? `${days}d ${hhmmss}` : hhmmss;
+}
+
+function useCountdown(deadlineAtIso) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!deadlineAtIso) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [deadlineAtIso]);
+
+  const msLeft = useMemo(() => {
+    if (!deadlineAtIso) return NaN;
+    const deadlineMs = Date.parse(deadlineAtIso);
+    if (!Number.isFinite(deadlineMs)) return NaN;
+    return deadlineMs - now;
+  }, [deadlineAtIso, now]);
+
+  return {
+    msLeft,
+    text: formatCountdown(msLeft),
+  };
+}
+
+function FundraiserCard({ f, onClick, onDonate }) {
+  const raised = Number(f.raised || 0);
+  const goal = Number(f.target_amount || 0);
+  const percentage = goal > 0 ? Math.round((raised / goal) * 100) : 0;
+
+  const supporters = f.supporters ?? 0;
+  const countdown = useCountdown(f.deadline_at);
+
+  return (
+    <div
+      onClick={onClick}
+      className="cursor-pointer overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm hover:shadow-md transition"
+    >
+      {/* Image */}
+      <div className="h-44 w-full bg-gray-100 overflow-hidden">
+        <img
+          src={f.image || FALLBACK_IMG}
+          alt={f.title}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          onError={(e) => {
+            e.currentTarget.src = FALLBACK_IMG;
+          }}
+        />
+      </div>
+
+      {/* Progress bar */}
+      <div className="h-2 w-full bg-gray-200">
+        <div
+          className="h-full bg-orange-400"
+          style={{ width: `${Math.min(percentage, 100)}%` }}
+        />
+      </div>
+
+      {/* Raised / Goal */}
+      <div className="flex items-center justify-between px-5 pt-3 text-[13px]">
+        <span className="text-orange-500 font-semibold">
+          Raised: {formatMoney(raised)}
+        </span>
+        <span className="text-gray-700 font-semibold">
+          Goal: {formatMoney(goal)}
+        </span>
+      </div>
+
+      {/* Title + Description */}
+      <div className="px-5 pt-3">
+        <h3 className="text-[20px] font-extrabold text-gray-900 leading-snug text-center">
+          {f.title}
+        </h3>
+        <p className="mt-2 text-[13px] text-gray-600 leading-relaxed text-center">
+          {clampText(f.description || "", 120)}
+        </p>
+      </div>
+
+      {/* Bottom row */}
+      <div className="mt-4 px-5 pb-5 flex items-center justify-between">
+        {/* supporters / donees */}
+        <div className="flex items-center gap-2 text-orange-500">
+          <div className="flex -space-x-2">
+            <span className="w-7 h-7 rounded-full bg-gray-300 border-2 border-white" />
+            <span className="w-7 h-7 rounded-full bg-gray-500 border-2 border-white" />
+          </div>
+          <div className="leading-tight">
+            <div className="text-sm font-bold">{supporters}</div>
+            <div className="text-xs font-semibold -mt-0.5">donees</div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="rounded-full bg-sky-500 px-8 py-2 text-white text-sm font-semibold hover:bg-sky-600 active:scale-[0.99]"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDonate?.(f);
+          }}
+        >
+          Donate
+        </button>
+
+        {/* time left */}
+        <div className="flex items-center gap-2 text-orange-500">
+          <div className="w-9 h-9 rounded-full border-2 border-orange-400 flex items-center justify-center">
+            <Clock className="w-4 h-4 text-orange-500" />
+          </div>
+          <div className="text-xs font-semibold">
+            {countdown.text || (f.daysLeft != null ? `${f.daysLeft}d left` : "")}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HorizontalSection({ title, items, onPrev, onNext, onDonate, onOpen }) {
+  return (
+    <div className="mb-8">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onPrev}
+            className="w-8 h-8 rounded-lg border border-emerald-200 flex items-center justify-center hover:bg-emerald-50"
+          >
+            <ChevronLeft className="w-4 h-4 text-emerald-700" />
+          </button>
+          <button
+            type="button"
+            onClick={onNext}
+            className="w-8 h-8 rounded-lg border border-emerald-200 flex items-center justify-center hover:bg-emerald-50"
+          >
+            <ChevronRight className="w-4 h-4 text-emerald-700" />
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-hidden">
+        <div
+          id={title}
+          className="flex gap-4 overflow-x-auto scroll-smooth pb-2 snap-x snap-mandatory"
+        >
+          {items.map((f) => (
+            <div key={f.id} className="min-w-[340px] max-w-[340px] snap-start">
+              <FundraiserCard
+                f={f}
+                onDonate={onDonate}
+                onClick={() => onOpen?.(f)}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function DiscoverPage() {
+  const navigate = useNavigate();
+
   const [activeCategory, setActiveCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
 
-  const categories = [
-    { id: "all", label: "All Causes", count: 8432 },
-    { id: "medical", label: "Medical", count: 2145 },
-    { id: "emergency", label: "Emergency", count: 1876 },
-    { id: "education", label: "Education", count: 1234 },
-    { id: "community", label: "Community", count: 987 },
-    { id: "animals", label: "Animals", count: 654 },
-    { id: "nonprofit", label: "Nonprofit", count: 532 },
-    { id: "business", label: "Business", count: 1004 },
-  ];
+  const [categories, setCategories] = useState([
+    { id: "all", label: "All Causes", count: 0 },
+  ]);
 
-  const fundraisers = [
-    {
-      title: "Emergency Medical Fund for Cancer Treatment",
-      organizer: "Sarah Johnson",
-      location: "New York, NY",
-      raised: 45230,
-      goal: 50000,
-      supporters: 892,
-      category: "Medical",
-      daysLeft: 12,
-      image:
-        "https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=600&h=400&fit=crop&q=80",
-      trending: true,
-    },
-    {
-      title: "Rebuild After Wildfire Disaster",
-      organizer: "Community Foundation",
-      location: "California, CA",
-      raised: 128500,
-      goal: 150000,
-      supporters: 2145,
-      category: "Emergency",
-      daysLeft: 8,
-      image:
-        "https://images.unsplash.com/photo-1469571486292-0ba58a3f068b?w=600&h=400&fit=crop&q=80",
-      trending: true,
-    },
-    {
-      title: "Scholarships for Underprivileged Students",
-      organizer: "Education Alliance",
-      location: "Chicago, IL",
-      raised: 35800,
-      goal: 40000,
-      supporters: 567,
-      category: "Education",
-      daysLeft: 15,
-      image:
-        "https://images.unsplash.com/photo-1427504494785-3a9ca7044f45?w=600&h=400&fit=crop&q=80",
-      trending: false,
-    },
-    {
-      title: "Animal Shelter Expansion Project",
-      organizer: "Pets Haven Charity",
-      location: "Austin, TX",
-      raised: 22100,
-      goal: 30000,
-      supporters: 423,
-      category: "Animals",
-      daysLeft: 20,
-      image:
-        "https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=600&h=400&fit=crop&q=80",
-      trending: false,
-    },
-    {
-      title: "Clean Water Initiative for Rural Communities",
-      organizer: "Water for All",
-      location: "Denver, CO",
-      raised: 67800,
-      goal: 80000,
-      supporters: 1243,
-      category: "Community",
-      daysLeft: 18,
-      image:
-        "https://images.unsplash.com/photo-1559027615-cd4628902d4a?w=600&h=400&fit=crop&q=80",
-      trending: true,
-    },
-    {
-      title: "Small Business Recovery Fund",
-      organizer: "Local Business Alliance",
-      location: "Seattle, WA",
-      raised: 89200,
-      goal: 100000,
-      supporters: 756,
-      category: "Business",
-      daysLeft: 10,
-      image:
-        "https://images.unsplash.com/photo-1556761175-b413da4baf72?w=600&h=400&fit=crop&q=80",
-      trending: false,
-    },
-  ];
+  // main list
+  const [fundraisers, setFundraisers] = useState([]);
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
+
+  // top sections
+  const [urgent, setUrgent] = useState([]);
+  const [attention, setAttention] = useState([]);
+
+  const [loadingMain, setLoadingMain] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const selectedCategoryLabel = useMemo(() => {
+    const found = categories.find((c) => c.id === activeCategory);
+    return found?.label || "All Causes";
+  }, [activeCategory, categories]);
+
+  const hasMore = fundraisers.length < total;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await apiJson("/api/auth/fundraisers/categories/", {
+          method: "GET",
+          auth: false,
+        });
+        setCategories(
+          Array.isArray(data) && data.length
+            ? data
+            : [{ id: "all", label: "All Causes", count: 0 }]
+        );
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+  }, []);
+
+  const buildDiscoverUrl = ({ categoryLabel, q, sort, off, lim }) => {
+    const cat = categoryLabel || "all";
+    return (
+      `/api/auth/fundraisers/discover/?` +
+      `category=${encodeURIComponent(cat)}` +
+      `&q=${encodeURIComponent(q || "")}` +
+      `&sort=${encodeURIComponent(sort || "newest")}` +
+      `&offset=${off ?? 0}` +
+      `&limit=${lim ?? PAGE_SIZE}`
+    );
+  };
+
+  const fetchMain = async ({ reset }) => {
+    const catLabel = activeCategory === "all" ? "all" : selectedCategoryLabel;
+    const off = reset ? 0 : offset;
+
+    const url = buildDiscoverUrl({
+      categoryLabel: catLabel,
+      q: searchQuery,
+      sort: sortBy,
+      off,
+      lim: PAGE_SIZE,
+    });
+
+    try {
+      reset ? setLoadingMain(true) : setLoadingMore(true);
+
+      const data = await apiJson(url, { method: "GET", auth: false });
+
+      const results = data?.results || [];
+      setTotal(data?.total || 0);
+
+      if (reset) {
+        setFundraisers(results);
+        setOffset(PAGE_SIZE);
+      } else {
+        setFundraisers((prev) => [...prev, ...results]);
+        setOffset((prev) => prev + PAGE_SIZE);
+      }
+    } catch (e) {
+      console.error("Discover fetch failed:", e);
+      if (reset) {
+        setFundraisers([]);
+        setTotal(0);
+        setOffset(0);
+      }
+    } finally {
+      reset ? setLoadingMain(false) : setLoadingMore(false);
+    }
+  };
+
+  const fetchTopSections = async () => {
+    const catLabel = activeCategory === "all" ? "all" : selectedCategoryLabel;
+
+    try {
+      const [urgentRes, attentionRes] = await Promise.all([
+        apiJson(
+          buildDiscoverUrl({
+            categoryLabel: catLabel,
+            q: searchQuery,
+            sort: "ending_soon",
+            off: 0,
+            lim: 6,
+          }),
+          { method: "GET", auth: false }
+        ),
+        apiJson(
+          buildDiscoverUrl({
+            categoryLabel: catLabel,
+            q: searchQuery,
+            sort: "needs_attention",
+            off: 0,
+            lim: 6,
+          }),
+          { method: "GET", auth: false }
+        ),
+      ]);
+
+      setUrgent(urgentRes?.results || []);
+      setAttention(attentionRes?.results || []);
+    } catch (e) {
+      console.error(e);
+      setUrgent([]);
+      setAttention([]);
+    }
+  };
+
+  useEffect(() => {
+    fetchMain({ reset: true });
+    fetchTopSections();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCategory]);
+
+  const onSearch = () => {
+    setOffset(0);
+    fetchMain({ reset: true });
+    fetchTopSections();
+  };
+
+  const onChangeSort = (v) => {
+    setSortBy(v);
+    setOffset(0);
+    setTimeout(() => fetchMain({ reset: true }), 0);
+  };
+
+  const scrollById = (id, delta) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollBy({ left: delta, behavior: "smooth" });
+  };
+
+  const openFundraiser = (f) => {
+    navigate(`/donate/${f.id}`);
+  };
+
+  const donateFundraiser = (f) => {
+    navigate(`/donate/${f.id}`);
+  };
 
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
 
-      {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 py-16">
+      {/* Top area */}
+      <section className="bg-[#e9efee] py-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-12">
-            <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-4">
-              Discover Fundraisers
-            </h1>
-            <p className="text-xl text-gray-600">
-              Find and support causes that matter to you
-            </p>
-          </div>
-
-          {/* Search Bar */}
-          <div className="max-w-3xl mx-auto">
+          <div className="bg-white rounded-xl border border-emerald-100 p-5">
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-700" />
               <input
-                type="text"
-                placeholder="Search fundraisers by keyword, location, or name..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-28 py-4 rounded-xl border border-emerald-200 bg-white
-                           focus:ring-2 focus:ring-emerald-300 focus:border-transparent outline-none
-                           text-gray-900 placeholder-emerald-400"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    onSearch();
+                  }
+                }}
+                placeholder="Search with keyword"
+                className="w-full h-12 pl-12 pr-4 rounded-full border border-emerald-200 bg-white
+                           focus:outline-none focus:ring-2 focus:ring-emerald-200 text-sm"
               />
+            </div>
 
-              {/* Keep same UI, theme it */}
-              <button className="absolute right-2 top-1/2 -translate-y-1/2 px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-semibold">
-                Search
-              </button>
+            <div className="mt-3 flex items-center justify-between flex-wrap gap-3">
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={onSearch}
+                  className="rounded-full border border-emerald-500 px-6 py-2 text-sm text-emerald-700 hover:bg-emerald-50"
+                >
+                  Search
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full border border-emerald-200 px-6 py-2 text-sm text-gray-700 hover:bg-emerald-50"
+                  onClick={() => {
+                    document
+                      .getElementById("discover-categories")
+                      ?.scrollIntoView({ behavior: "smooth" });
+                  }}
+                >
+                  Categories
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Sort by:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => onChangeSort(e.target.value)}
+                  className="px-4 py-2 border border-emerald-200 rounded-full text-sm bg-white
+                             focus:ring-2 focus:ring-emerald-200 focus:border-transparent outline-none"
+                >
+                  {SORT_OPTIONS.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Filters and Content */}
-      <section className="py-12 bg-white">
+      {/* Main content */}
+      <section className="py-10 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-4 gap-8">
-            {/* Sidebar Filters */}
-            <div className="lg:col-span-1">
+            {/* Sidebar categories */}
+            <div className="lg:col-span-1" id="discover-categories">
               <Card className="sticky top-24 border border-emerald-100">
                 <div className="flex items-center gap-2 mb-6">
                   <Filter className="w-5 h-5 text-emerald-700" />
-                  <h3 className="text-lg font-bold text-gray-900">
-                    Filter by Category
-                  </h3>
+                  <h3 className="text-lg font-bold text-gray-900">Categories</h3>
                 </div>
 
                 <div className="space-y-2">
                   {categories.map((category) => (
                     <button
                       key={category.id}
-                      onClick={() => setActiveCategory(category.id)}
+                      onClick={() => {
+                        setActiveCategory(category.id);
+                        setOffset(0);
+                      }}
                       className={`w-full text-left px-4 py-3 rounded-lg transition-colors ${
                         activeCategory === category.id
                           ? "bg-emerald-100 text-emerald-900 font-semibold"
@@ -177,9 +471,7 @@ export default function DiscoverPage() {
                     >
                       <div className="flex justify-between items-center">
                         <span>{category.label}</span>
-                        <span className="text-sm text-gray-500">
-                          {category.count}
-                        </span>
+                        <span className="text-sm text-gray-500">{category.count}</span>
                       </div>
                     </button>
                   ))}
@@ -187,139 +479,68 @@ export default function DiscoverPage() {
               </Card>
             </div>
 
-            {/* Fundraiser Grid */}
+            {/* Right side */}
             <div className="lg:col-span-3">
-              <div className="flex justify-between items-center mb-6 gap-4 flex-wrap">
-                <h2 className="text-2xl font-bold text-gray-900">
-                  {activeCategory === "all"
-                    ? "All Fundraisers"
-                    : `${
-                        categories.find((c) => c.id === activeCategory)?.label
-                      } Fundraisers`}
+              <HorizontalSection
+                title="Urgent funds needed"
+                items={urgent}
+                onPrev={() => scrollById("Urgent funds needed", -360)}
+                onNext={() => scrollById("Urgent funds needed", 360)}
+                onDonate={donateFundraiser}
+                onOpen={openFundraiser}
+              />
+
+              <HorizontalSection
+                title="Fundraisers in need of more attention"
+                items={attention}
+                onPrev={() => scrollById("Fundraisers in need of more attention", -360)}
+                onNext={() => scrollById("Fundraisers in need of more attention", 360)}
+                onDonate={donateFundraiser}
+                onOpen={openFundraiser}
+              />
+
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-semibold text-gray-800">
+                  {activeCategory === "all" ? "All fundraisers" : selectedCategoryLabel}
+                  {searchQuery.trim() ? (
+                    <span className="text-gray-500 font-normal">
+                      {" "}
+                      — results for “{searchQuery.trim()}”
+                    </span>
+                  ) : null}
                 </h2>
-
-                <select
-                  className="px-4 py-2 border border-emerald-200 rounded-lg text-sm bg-white
-                             focus:ring-2 focus:ring-emerald-300 focus:border-transparent outline-none"
-                >
-                  <option>Most Recent</option>
-                  <option>Most Funded</option>
-                  <option>Ending Soon</option>
-                  <option>Most Supporters</option>
-                </select>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {fundraisers.map((fundraiser, index) => {
-                  const percentage = Math.round(
-                    (fundraiser.raised / fundraiser.goal) * 100
-                  );
+              {loadingMain ? (
+                <div className="text-sm text-gray-600">Loading...</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {fundraisers.map((f) => (
+                      <FundraiserCard
+                        key={f.id}
+                        f={f}
+                        onDonate={donateFundraiser}
+                        onClick={() => openFundraiser(f)}
+                      />
+                    ))}
+                  </div>
 
-                  return (
-                    <Card
-                      key={index}
-                      padding={false}
-                      className="overflow-hidden cursor-pointer group border border-emerald-100"
-                    >
-                      {/* Image */}
-                      <div className="relative h-56 overflow-hidden">
-                        <img
-                          src={fundraiser.image}
-                          alt={fundraiser.title}
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div>
-
-                        {/* Category badge */}
-                        <div className="absolute top-4 left-4">
-                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-white/95 backdrop-blur-sm text-emerald-800 text-xs font-semibold rounded-full">
-                            <Tag className="w-3 h-3" />
-                            {fundraiser.category}
-                          </span>
-                        </div>
-
-                        {/* Trending badge */}
-                        {fundraiser.trending && (
-                          <div className="absolute top-4 right-4">
-                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-600 text-white text-xs font-semibold rounded-full">
-                              <TrendingUp className="w-3 h-3" />
-                              Trending
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Like button */}
-                        <button className="absolute bottom-4 right-4 w-9 h-9 bg-white/95 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-emerald-600 hover:text-white transition-colors">
-                          <Heart className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      {/* Content */}
-                      <div className="p-5">
-                        <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-emerald-700 transition-colors">
-                          {fundraiser.title}
-                        </h3>
-
-                        <div className="flex items-center gap-4 text-sm text-gray-600 mb-4 flex-wrap">
-                          <span className="font-semibold">
-                            {fundraiser.organizer}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-emerald-700" />
-                            {fundraiser.location}
-                          </span>
-                        </div>
-
-                        {/* Progress */}
-                        <div className="mb-4">
-                          <div className="flex justify-between text-sm mb-2">
-                            <span className="font-bold text-gray-900">
-                              ${fundraiser.raised.toLocaleString()}
-                            </span>
-                            <span className="text-gray-600">{percentage}%</span>
-                          </div>
-
-                          <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                            <div
-                              className="h-full bg-emerald-600 rounded-full transition-all duration-500"
-                              style={{ width: `${Math.min(percentage, 100)}%` }}
-                            ></div>
-                          </div>
-
-                          <div className="text-xs text-gray-500 mt-1">
-                            of ${fundraiser.goal.toLocaleString()} goal
-                          </div>
-                        </div>
-
-                        {/* Footer */}
-                        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                          <div className="flex items-center gap-1 text-sm text-gray-600">
-                            <Users className="w-4 h-4" />
-                            <span className="font-semibold">
-                              {fundraiser.supporters}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1 text-sm text-gray-600">
-                            <Clock className="w-4 h-4" />
-                            <span>{fundraiser.daysLeft} days left</span>
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-
-              {/* Load More Button */}
-              <div className="text-center mt-12">
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  className="rounded-full border-emerald-200 text-emerald-800 hover:bg-emerald-50"
-                >
-                  Load More Fundraisers
-                </Button>
-              </div>
+                  {hasMore && (
+                    <div className="text-center mt-10">
+                      <Button
+                        variant="secondary"
+                        size="lg"
+                        className="rounded-full border-emerald-200 text-emerald-800 hover:bg-emerald-50"
+                        disabled={loadingMore}
+                        onClick={() => fetchMain({ reset: false })}
+                      >
+                        {loadingMore ? "Loading..." : "Load More"}
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
